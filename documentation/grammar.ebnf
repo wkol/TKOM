@@ -1,0 +1,72 @@
+// general
+program                         := [statements], EOF ;
+statements                      := [statement | comment], {"\n", [statement | comment]} ;
+statement                       := (expression | declaration | return_statement | assignment_statement | block | conditional_statement) [comment] ;
+block                           := "{", statements, "}", ;
+comment                         := "\/\/", {? any_character ? - "\n"};
+declaration                     := const_declaration | var_declaration | function_declaration ;
+
+// conditional statements
+conditional_statement           := if_statement | while_statement ;
+if_statement                    := "if", "(", expression, ")", block, [else_statement] ;
+else_statement                  := "else", block ;
+while_statement                 := "while", "(", expression, ")", block ;
+
+// variables
+var_declaration                 := "var", type, identifier, ["=", expression] ;
+const_declaration               := "const", type, identifier, ["=", , expression] ;
+assignment_statement            := identifier "=" expression ;
+
+// functions
+function_declaration            := "fun", identifier, function_parameters, ["->", type], block ;
+function_parameters             := "(", [function_parameter, {",", function_parameter}], ")" ;
+function_parameter              := type, identifier ;
+function_call                   := identifier, "(", [argument_list], ")" ;
+argument_list                   := expression, {",", expression} ;
+return_statement                := "return", [expression] ;
+builtin_function_call           := "builtin.", function_call ;
+
+// expressions
+expression                      := conjunction_expression | disjunction_expression | equality_expression | comparison_expression | additive_expression | multiplicative_expression | as_expression ;
+
+parenthesized_expression        := "(", expression, ")" ;
+conjunction_expression          := equality_expression, {and_operator, equality_expression} ;
+disjunction_expression          := conjunction_expression, {or_operator, conjunction_expression} ;
+equality_expression             := comparison_expression, {equality_operator, comparison_expression} ;
+comparison_expression           := null_safety_expression, {comparison_operator, null_safety_expression} ;
+null_safety_expression          := additive_expression [null_safety_operator, additive_expression] ;
+additive_expression             := multiplicative_expression, {additive_operator, multiplicative_expression} ;
+multiplicative_expression       := as_expression, {multiplicative_operator, as_expression} ;
+as_expression                   := unary_expression, [as_operator, type] ;
+unary_expression                := [unary_operator], simple_expression ;
+simple_expression               := literal_constant | identifier | function_call | parenthesized_expression | builtin_function_call ;
+
+// operators
+as_operator                     := "as" ;
+additive_operator               := "+" | "-" ;
+multiplicative_operator         := "*" | "/" | "%" ;
+equality_operator               := "==" | "!=" ;
+comparison_operator             := "<" | ">" | "<=" | ">=" ;
+null_safety_operator            := "?:" ;
+unary_operator                  := "!" | "-" ;
+and_operator                    := "&&" ;
+or_operator                     := "||" ;
+
+// types
+type                            := non_null_type, ["?"] ;
+identifier                      := (letter | "_"), {digit | letter | "_"} ;
+non_null_type                   := "int" | "bool" | "double" | "string" ;
+
+// literals
+literal_constant                := boolean_literal | double_literal | integer_literal | string_literal | "null" ;
+boolean_literal                 := "true" | "false" ;
+double_literal                  := integer_literal, ".", digit, {digit} ;
+integer_literal                 := "0" | number_literal ;
+number_literal                  := digit_non_zero, {digit} ;
+string_literal                  := "\"", {characters | escape_characters}, "\"" ;
+
+escape_characters               := "\\" ("t" | "b" | "r" | "n" | "\"" | "\\") ;
+characters                      := (? all_visible_characters ? - "\"") | " " ;
+letter                          := "a".."z" | "A".."Z" ;
+digit                           := "0" | digit_non_zero ;
+digit_non_zero                  := "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
