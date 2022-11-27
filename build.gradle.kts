@@ -51,6 +51,7 @@ dependencies {
     implementation(project(":lexer"))
     implementation(project(":parser"))
     implementation(project(":interpreter"))
+    implementation(project(":inputsource"))
     detektPlugins(libs.detekt.formatting)
     testImplementation(libs.kotlin.test)
 }

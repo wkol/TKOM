@@ -53,8 +53,6 @@ Język programowania - Kotlin
 * #### Funkcje:
     * możliwość definicji funkcji przyjmujących dowolną liczbę argumentów oraz opcjonalnie zwracających wartość
     * funkcja jest widoczna w obrębie bloku kodu w którym została zdefiniowana
-    * w przypadku konfliktu nazw funkcji z nazwami funkcji wbudowanych w języku, w trakcie wywoływania funkcja
-      użytkownika ma pierwszeństwo - chyba, że zostanie poprzedzona `builtin.` (np. `builtin.print()`)
     * możliwość definicji funkcji przez użytkownika w postaci:
     ```
     fun nazwaFunkcji(typ1 parametr1, typ2 parametr2 ...) -> typZwracany (jeśli funkcja ma zwracać wartość) {
@@ -78,8 +76,8 @@ fun average(double a, double b) -> double {
     return (a + b) / 2.0
 }
 
-fun print(string text) {
-    builtin.print("Exiting program with i = " + text )
+fun printText(string text) {
+    print("Exiting program with i = " + text )
 }
 
 fun main() {
@@ -90,13 +88,13 @@ fun main() {
         const string input = readInput() ?: "0"
         if (isNumber(input) && input as int > 0) {
             const double number = input as double
-            builtin.print("The average of 2 and " + number + " is " + average(c, number))
+            print("The average of 2 and " + number + " is " + average(c, number))
         } else {
-            builtin.print("The input is not a number")
+            print("The input is not a number")
         }
         i = i + 1 // incrementing i
     }
-    print(i as string)
+    printText(i as string)
 }
 
 main()
@@ -126,12 +124,12 @@ Gramatyka języka zapisana w notacji EBNF znajduję się w pliku [grammar.ebnf](
   w wypadku którym należy zgłosić błąd gdy zmienna jest oznaczona jako niemutowalna)
 * należy rozróżniać czy zmienna niezainicjowana jest deklarowana jako nullowalna, i gdy nie jest informować
   użytkownika o błędzie
-* z racji możliwości definiowania funkcji o takiej samej sygnaturze jak funkcje wbudowane należy sprawdzać czy w danym
-  bloku kodu wywołana powinna zostać funkcja użytkownika czy wbudowana
+* z racji niedozwalania na deklaracje funkcji o takiej samej sygnaturze co funkcja wbudowana, należy sprawdzać
+  podczas deklaracji funkcji czy jest ona dostępna
 * z racji, że pozwalamy na funkcję niezwracające wartości, należy sprawdzać czy wywołanie takiej funkcji nie jest użyte
   jako wyrażenie (np. w instrukcji warunkowej lub w wyrażeniu przypisania) i zgłaszać wtedy błąd.
 * należy sprawdzać w miejscach używania zmiennych czy są one dostępne w tym miejscu
-
+// TODO dodać drzewo składniowe oraz pozostałe wymagania
 ### Uruchomienie interpretera:
 
 Przed uruchomieniem interpretera należy wygenerować plik jar za pomocą polecenia `./gradlew shadowJar`.
@@ -162,7 +160,14 @@ np. `java -jar build/libs/interpreter-all.jar ./test.ktx`).
 
 Interpreter w przypadku napotkania błędu powinien wypisać na standardowe wyjście błąd
 wraz z jego opisem oraz kodem powodującym błąd. Następnie interpreter powinien poinformować użytkownika o kończeniu
-działania i zakończyć się.
+działania i zakończyć się. Błędy napotkane podczas interpretowania kodu mają następujące postać:
+```
+<Typ błędu> <Opis błędu> <Miejsce wystąpienia błędu>
+```
+Np.:
+```
+ZeroDivisionError: Division by zero is forbidden. "return a / 0" at line 1, column 11
+```
 
 ### Testowanie:
 
