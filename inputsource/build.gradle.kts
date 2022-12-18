@@ -1,9 +1,7 @@
-group = "org.example.lexer"
+group = "org.example.inputsource"
 
 dependencies {
     implementation(libs.kotlin.stdlib)
     implementation(libs.kotlin.reflect)
-    implementation(project(":inputsource"))
-    testImplementation(libs.kotlin.test)
     implementation(libs.okio)
 }

@@ -1,0 +1,22 @@
+package org.example.lexer.token
+
+enum class TokenType {
+    LITERAL,
+    IDENTIFIER,
+    KEYWORD,
+    ADDITIVE_OPERATOR,
+    MULTIPLICATIVE_OPERATOR,
+    COMPARISON_OPERATOR,
+    NULL_SAFETY_OPERATOR,
+    UNARY_OPERATOR,
+    AND_OPERATOR,
+    OR_OPERATOR,
+    AS_OPERATOR,
+    TYPE,
+    FUN_RETURN_ARROW,
+    COMMENT,
+    EOF,
+    SPECIAL,
+    CONJUNCTION,
+    DISJUNCTION,
+}

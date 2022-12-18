@@ -3,3 +3,4 @@ rootProject.name = "tkom22z"
 include(":lexer")
 include(":parser")
 include(":interpreter")
+include(":inputsource")
