@@ -5,5 +5,4 @@ dependencies {
     implementation(libs.kotlin.reflect)
     implementation(project(":inputsource"))
     testImplementation(libs.kotlin.test)
-    implementation(libs.okio)
 }

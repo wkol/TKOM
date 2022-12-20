@@ -1,11 +1,13 @@
 package org.example.lexer
 
+import org.example.inputsource.CodePosition
 import org.example.inputsource.EOF
 import org.example.inputsource.InputSource
 import org.example.lexer.exceptions.CommentLengthOverflow
 import org.example.lexer.exceptions.DoublePrecisionOverflow
 import org.example.lexer.exceptions.IdentifierLengthOverflow
 import org.example.lexer.exceptions.InvalidStringChar
+import org.example.lexer.exceptions.LexerException
 import org.example.lexer.exceptions.NumberOverflow
 import org.example.lexer.exceptions.StringLengthOverflow
 import org.example.lexer.exceptions.UnclosedQuoteString
@@ -16,30 +18,31 @@ import kotlin.math.pow
 import org.example.lexer.utils.isIdentifierChar
 import org.example.lexer.utils.isLogicalOperatorChar
 import org.example.lexer.utils.isSpecialChar
-import org.example.lexer.utils.isEscapedChar
 import kotlin.jvm.Throws
 
 class LexerImpl(
     private val inputSource: InputSource,
-    private val config: LexerConfig
+    override val config: LexerConfig = LexerConfig()
 ) : Lexer() {
 
-    override var lastToken: Token? = null
+    private var codePosition = inputSource.getPosition()
+
+    override var token: Token? = null
 
     override fun getNextToken() {
         skipWhitespaces()
-        if (inputSource.peekNextChar() == EOF) {
-            lastToken = Token.EOF(inputSource.getPosition())
+        codePosition = inputSource.getPosition()
+        if (inputSource.currentChar == EOF) {
+            token = Token.EOF(inputSource.getPosition())
             return
         }
-        if (tryBuildComment() ||
+
+        if (tryBuildCommentOrDivision() ||
             tryBuildNumber() ||
             tryBuildString() ||
-            tryBuildFunReturnTypeArrow() ||
+            tryBuildUnaryOperatorOrFunctionArrow() ||
             tryBuildComparisonOrAssignmentOperator() ||
-            tryBuildUnaryOperator() ||
-            tryBuildSpecialToken() ||
-            tryBuildNullSafetyOperator() ||
+            tryBuildSpecialTokenOrNullSafety() ||
             tryBuildLogicalOperator() ||
             tryBuildAdditiveOperator() ||
             tryBuildMultiplicativeOperator() ||
@@ -48,336 +51,346 @@ class LexerImpl(
             return
         }
         val position = inputSource.getPosition()
-        throw UnexpectedChar(inputSource.peekNextChar(), position)
+        throw UnexpectedChar(inputSource.currentChar, position)
     }
 
+    override fun getCodePosition(): CodePosition {
+        return codePosition.copy()
+    }
+
+    @Throws(Exception::class)
     fun getAllTokens(): List<Token> {
         val tokens = mutableListOf<Token>()
-        while (lastToken !is Token.EOF) {
+        while (token !is Token.EOF) {
             getNextToken()
-            tokens.add(lastToken ?: throw Exception("Unexpected end of file"))
+            tokens.add(token ?: throw Exception("Unexpected end of file"))
         }
         return tokens
     }
 
     private fun skipWhitespaces() {
-        while (inputSource.peekNextChar().isWhitespace()) {
-            inputSource.getNextChar()
+        while (inputSource.currentChar.isWhitespace()) {
+            inputSource.consumeCharacter()
         }
     }
 
-    private fun tryBuildComment(): Boolean {
-        if (inputSource.peekNextChars(2) != "//") return false
-        val start = inputSource.getPosition()
-        inputSource.getNextChar()
-        inputSource.getNextChar()
-        val value = StringBuilder()
-        while (inputSource.peekNextChar() !in listOf('\n', EOF)) {
-            value.append(inputSource.getNextChar())
-            if (value.length > config.maxCommentLength) {
-                throw CommentLengthOverflow(start, config.maxCommentLength)
-            }
+    @Throws(CommentLengthOverflow::class)
+    // TODO Refactor this method to commentOrDivisi
+    private fun tryBuildCommentOrDivision(): Boolean {
+        if (inputSource.currentChar != '/') return false
+
+        if (inputSource.consumeCharacter() != '/') {
+            token = Token.MultiplicativeOperator(Token.MultiplicativeOperator.Type.DIVIDE, codePosition)
+            return true
         }
-        lastToken = Token.Comment(value.toString(), start)
+        val value = StringBuilder()
+        while (inputSource.consumeCharacter() !in listOf('\n', EOF)) {
+            if (value.length >= config.maxCommentLength) {
+                throw CommentLengthOverflow(codePosition, config.maxCommentLength)
+            }
+            value.append(inputSource.currentChar)
+        }
+        token = Token.Comment(value.toString(), codePosition)
         return true
     }
 
     @Throws(NumberOverflow::class)
     private fun tryBuildNumber(): Boolean {
-        if (!inputSource.peekNextChar().isDigit()) {
+        if (!inputSource.currentChar.isDigit()) {
             return false
         }
-        val start = inputSource.getPosition()
-        var value = 0.0
-        if (inputSource.peekNextChar() != '0') {
-            while (inputSource.peekNextChar().isDigit()) {
-                value = value * 10 + inputSource.getNextChar().digitToInt()
-                if (value > config.maxIntegerValue) {
-                    throw NumberOverflow(start, config.maxIntegerValue)
+
+        var value = inputSource.currentChar.digitToInt()
+        if (inputSource.currentChar != '0') {
+            while (inputSource.consumeCharacter().isDigit()) {
+                if ((config.maxIntegerValue - inputSource.currentChar.digitToInt()) / 10 < value) {
+                    throw NumberOverflow(codePosition, config.maxIntegerValue)
                 }
+                value = value * 10 + inputSource.currentChar.digitToInt()
             }
         } else {
-            inputSource.getNextChar()
+            inputSource.consumeCharacter()
         }
-        if (inputSource.peekNextChar() == '.') {
-            inputSource.getNextChar()
-            var fractionPart = 0
-            var fractionPartLength = 0
-            while (inputSource.peekNextChar().isDigit()) {
-                fractionPart = fractionPart * 10 + inputSource.getNextChar().digitToInt()
-                fractionPartLength++
-                if (fractionPartLength > config.maxDoublePrecision) {
-                    throw DoublePrecisionOverflow(start, config.maxDoublePrecision)
-                }
-            }
-            value += fractionPart / 10.0.pow(fractionPartLength)
-            if (inputSource.peekNextChar().isLetter()) {
-                throw UnexpectedChar(inputSource.peekNextChar(), inputSource.getPosition())
-            }
-            lastToken = Token.Literal(value, start, Token.Literal.Type.DOUBLE)
+        if (inputSource.currentChar != '.') {
+            token = Token.Literal(value, codePosition, Token.Literal.Type.INTEGER)
             return true
         }
-        if (inputSource.peekNextChar().isLetter()) {
-            throw UnexpectedChar(inputSource.peekNextChar(), inputSource.getPosition())
+        var fractionPart = 0
+        var fractionPartLength = 0
+        while (inputSource.consumeCharacter().isDigit()) {
+            if (fractionPartLength >= config.maxDoublePrecision) {
+                throw DoublePrecisionOverflow(codePosition, config.maxDoublePrecision)
+            }
+            fractionPart = fractionPart * 10 + inputSource.currentChar.digitToInt()
+            fractionPartLength++
         }
-        lastToken = Token.Literal(value.toInt(), start, Token.Literal.Type.INTEGER)
+        token = Token.Literal(value + fractionPart / 10.0.pow(fractionPartLength), codePosition, Token.Literal.Type.DOUBLE)
         return true
     }
 
     @Throws(IdentifierLengthOverflow::class)
     private fun tryBuildIdentifierOrKeyword(): Boolean {
-        if (inputSource.peekNextChar().isDigit()) {
+        if (!inputSource.currentChar.isLetter() && inputSource.currentChar != '_') {
             return false
         }
-        val start = inputSource.getPosition()
-        val value = StringBuilder()
-        while (inputSource.peekNextChar() == '_') {
-            value.append(inputSource.getNextChar())
-            if (value.length > config.maxIdentifierLength) {
-                throw IdentifierLengthOverflow(start, config.maxIdentifierLength)
+
+        val value = StringBuilder(inputSource.currentChar.toString())
+        while (inputSource.consumeCharacter() == '_') {
+            if (value.length >= config.maxIdentifierLength) {
+                throw IdentifierLengthOverflow(codePosition, config.maxIdentifierLength)
+            }
+            value.append(inputSource.currentChar)
+        }
+        if (!inputSource.currentChar.isLetterOrDigit()) {
+            if (value.last() == '_') {
+                throw LexerException("Invalid identifier", codePosition)
+            } else {
+                token = Token.Identifier(value.toString(), codePosition)
+                return true
             }
         }
-        if (!inputSource.peekNextChar().isLetterOrDigit()) {
-            return false
-        }
-        while (inputSource.peekNextChar().isIdentifierChar()) {
-            value.append(inputSource.getNextChar())
-            if (value.length > config.maxIdentifierLength) {
-                throw IdentifierLengthOverflow(start, config.maxIdentifierLength)
+        value.append(inputSource.currentChar)
+        while (inputSource.consumeCharacter().isIdentifierChar()) {
+            if (value.length >= config.maxIdentifierLength) {
+                throw IdentifierLengthOverflow(codePosition, config.maxIdentifierLength)
             }
+            value.append(inputSource.currentChar)
         }
-        lastToken = when (val strValue = value.toString()) {
-            "return" -> Token.Keyword(Token.Keyword.Type.RETURN, start)
-            "if" -> Token.Keyword(Token.Keyword.Type.IF, start)
-            "else" -> Token.Keyword(Token.Keyword.Type.ELSE, start)
-            "while" -> Token.Keyword(Token.Keyword.Type.WHILE, start)
-            "bool" -> Token.Keyword(Token.Keyword.Type.BOOL, start)
-            "int" -> Token.Keyword(Token.Keyword.Type.INT, start)
-            "double" -> Token.Keyword(Token.Keyword.Type.DOUBLE, start)
-            "string" -> Token.Keyword(Token.Keyword.Type.STRING, start)
-            "var" -> Token.Keyword(Token.Keyword.Type.VAR, start)
-            "const" -> Token.Keyword(Token.Keyword.Type.CONST, start)
-            "fun" -> Token.Keyword(Token.Keyword.Type.FUN, start)
-            "null" -> Token.Literal(null, start, Token.Literal.Type.NULL)
-            "as" -> Token.AsOperator(start)
-            else -> Token.Identifier(strValue, start)
+        token = when (val strValue = value.toString()) {
+            "return" -> Token.Keyword(Token.Keyword.Type.RETURN, codePosition)
+            "if" -> Token.Keyword(Token.Keyword.Type.IF, codePosition)
+            "else" -> Token.Keyword(Token.Keyword.Type.ELSE, codePosition)
+            "while" -> Token.Keyword(Token.Keyword.Type.WHILE, codePosition)
+            "bool" -> Token.Keyword(Token.Keyword.Type.BOOL, codePosition)
+            "int" -> Token.Keyword(Token.Keyword.Type.INT, codePosition)
+            "double" -> Token.Keyword(Token.Keyword.Type.DOUBLE, codePosition)
+            "string" -> Token.Keyword(Token.Keyword.Type.STRING, codePosition)
+            "var" -> Token.Keyword(Token.Keyword.Type.VAR, codePosition)
+            "const" -> Token.Keyword(Token.Keyword.Type.CONST, codePosition)
+            "fun" -> Token.Keyword(Token.Keyword.Type.FUN, codePosition)
+            "null" -> Token.Literal(null, codePosition, Token.Literal.Type.NULL)
+            "as" -> Token.Keyword(Token.Keyword.Type.AS, codePosition)
+            "true" -> Token.Literal(true, codePosition, Token.Literal.Type.BOOLEAN)
+            "false" -> Token.Literal(false, codePosition, Token.Literal.Type.BOOLEAN)
+            else -> Token.Identifier(strValue, codePosition)
         }
         return true
     }
 
     @Throws(StringLengthOverflow::class, InvalidStringChar::class)
     private fun tryBuildString(): Boolean {
-        val start = inputSource.getPosition()
-        val value = StringBuilder()
-        if (inputSource.peekNextChar() != '"') {
+        if (inputSource.currentChar != '"') {
             return false
         }
-        inputSource.getNextChar()
-        while (inputSource.peekNextChar() != '"') {
-            if (value.length > config.maxStringLength) {
-                throw StringLengthOverflow(start, config.maxStringLength)
+
+        val value = StringBuilder()
+        while (inputSource.consumeCharacter() != '"') {
+            if (inputSource.currentChar in listOf('\n', EOF)) throw UnclosedQuoteString(codePosition)
+            if (value.length >= config.maxStringLength) {
+                throw StringLengthOverflow(codePosition, config.maxStringLength)
             }
-            val nextChar = inputSource.peekNextChar()
+            val nextChar = inputSource.currentChar
             if (nextChar == '\\') {
                 val escapedChar = tryBuildEscapeIdentifier()
                 value.append(escapedChar)
+            } else {
+                value.append(inputSource.currentChar)
             }
-            if (nextChar in listOf('\n', EOF)) throw UnclosedQuoteString(start)
-            value.append(inputSource.getNextChar())
         }
 
-        inputSource.getNextChar()
-        lastToken = Token.Literal(value.toString(), start, Token.Literal.Type.STRING)
+        inputSource.consumeCharacter()
+        token = Token.Literal(value.toString(), codePosition, Token.Literal.Type.STRING)
         return true
     }
 
     @Throws(InvalidStringChar::class)
-    private fun tryBuildEscapeIdentifier(): String {
-        val value = StringBuilder()
-        if (inputSource.peekNextChar() != '\\') {
-            throw InvalidStringChar(inputSource.getPosition(), inputSource.peekNextChar())
+    private fun tryBuildEscapeIdentifier(): Char {
+        if (inputSource.currentChar != '\\') {
+            throw InvalidStringChar(inputSource.getPosition(), inputSource.currentChar)
         }
-        inputSource.getNextChar()
-        if (!inputSource.peekNextChar().isEscapedChar()) throw InvalidStringChar(inputSource.getPosition(), inputSource.peekNextChar())
-        when (inputSource.getNextChar()) {
-            'n' -> value.append('\n')
-            't' -> value.append('\t')
-            'r' -> value.append('\r')
-            'b' -> value.append('\b')
-            '\\' -> value.append('\\')
-            '"' -> value.append('"')
+        return when (inputSource.consumeCharacter()) {
+            'n' -> '\n'
+            't' -> '\t'
+            'r' -> '\r'
+            'b' -> '\b'
+            '\\' ->'\\'
+            '"' -> '"'
+            else -> throw InvalidStringChar(inputSource.getPosition(), inputSource.currentChar)
         }
-        return value.toString()
     }
 
     private fun tryBuildAdditiveOperator(): Boolean {
-        val start = inputSource.getPosition()
-        if (inputSource.peekNextChar() != '+') {
+        if (inputSource.currentChar != '+') {
             return false
         }
-        inputSource.getNextChar()
-        lastToken = Token.AdditiveOperator(position = start)
+
+        inputSource.consumeCharacter()
+        token = Token.AdditiveOperator(position = codePosition)
         return true
     }
 
     private fun tryBuildMultiplicativeOperator(): Boolean {
-        val start = inputSource.getPosition()
-        if (inputSource.peekNextChar() !in listOf('*', '/', '%')) {
+
+        if (inputSource.currentChar !in listOf('*', '/', '%')) {
             return false
         }
-        val operator = inputSource.getNextChar()
-        lastToken = Token.MultiplicativeOperator(
-            value = when (operator) {
+        token = Token.MultiplicativeOperator(
+            value = when (inputSource.currentChar) {
                 '*' -> Token.MultiplicativeOperator.Type.MULTIPLY
                 '/' -> Token.MultiplicativeOperator.Type.DIVIDE
                 else -> Token.MultiplicativeOperator.Type.MODULO
             },
-            position = start
+            position = codePosition
         )
+        inputSource.consumeCharacter()
         return true
     }
 
-    private fun tryBuildNullSafetyOperator(): Boolean {
-        val start = inputSource.getPosition()
-        if (inputSource.peekNextChar() != '?') {
+    private fun tryBuildSpecialTokenOrNullSafety(): Boolean {
+        if (!inputSource.currentChar.isSpecialChar()) {
             return false
         }
-        inputSource.getNextChar()
-        if (inputSource.peekNextChar() != ':') {
-            return false
+
+        token = when (inputSource.currentChar) {
+            '(' -> Token.Special(value = Token.Special.Type.LPAREN, position = codePosition)
+            ')' -> Token.Special(value = Token.Special.Type.RPAREN, position = codePosition)
+            '{' -> Token.Special(value = Token.Special.Type.LBRACE, position = codePosition)
+            '}' -> Token.Special(value = Token.Special.Type.RBRACE, position = codePosition)
+            ',' -> Token.Special(value = Token.Special.Type.COMMA, position = codePosition)
+            else -> {
+                if (inputSource.consumeCharacter() == ':') {
+                    Token.NullSafetyOperator(position = codePosition)
+                } else {
+                    Token.Special(value = Token.Special.Type.QUESTION_MARK, position = codePosition)
+                }
+            }
         }
-        inputSource.getNextChar()
-        lastToken = Token.NullSafetyOperator(position = start)
+        inputSource.consumeCharacter()
         return true
     }
 
-    private fun tryBuildSpecialToken(): Boolean {
-        if (!inputSource.peekNextChar().isSpecialChar() || inputSource.peekNextChars(2) == "?:") {
+    private fun tryBuildUnaryOperatorOrFunctionArrow(): Boolean {
+        if ((inputSource.currentChar !in listOf('!', '-'))) {
             return false
         }
-        val start = inputSource.getPosition()
-        lastToken = when (inputSource.getNextChar()) {
-            '(' -> Token.Special(value = Token.Special.Type.LPAREN, position = start)
-            ')' -> Token.Special(value = Token.Special.Type.RPAREN, position = start)
-            '{' -> Token.Special(value = Token.Special.Type.LBRACE, position = start)
-            '}' -> Token.Special(value = Token.Special.Type.RBRACE, position = start)
-            ',' -> Token.Special(value = Token.Special.Type.COMMA, position = start)
-            else -> Token.Special(value = Token.Special.Type.QUESTION_MARK, position = start)
-        }
-        return true
-    }
 
-    private fun tryBuildUnaryOperator(): Boolean {
-        if ((inputSource.peekNextChar() !in listOf('!', '-'))) {
-            return false
+        token = when (inputSource.currentChar) {
+            '!' -> {
+                if (inputSource.consumeCharacter() == '=') {
+                    inputSource.consumeCharacter()
+                    Token.ComparisonOperator(
+                        value = Token.ComparisonOperator.Type.NOT_EQUAL,
+                        position = codePosition
+                    )
+                } else {
+                    Token.UnaryOperator(
+                        value = Token.UnaryOperator.Type.NOT,
+                        position = codePosition
+                    )
+                }
+            }
+
+            else -> {
+                if (inputSource.consumeCharacter() == '>') {
+                    inputSource.consumeCharacter()
+                    Token.FunReturnTypeArrow(codePosition)
+                } else {
+                    Token.UnaryOperator(Token.UnaryOperator.Type.MINUS, codePosition)
+                }
+            }
         }
-        val start = inputSource.getPosition()
-        val operator = inputSource.getNextChar()
-        lastToken = Token.UnaryOperator(
-            value = if (operator == '-') Token.UnaryOperator.Type.MINUS else Token.UnaryOperator.Type.NOT,
-            position = start
-        )
         return true
     }
 
     private fun tryBuildComparisonOrAssignmentOperator(): Boolean {
-        if (inputSource.peekNextChar() !in listOf('=', '!', '<', '>')) {
-            return false
-        }
-        val start = inputSource.getPosition()
-        val operator = inputSource.getNextChar()
-        lastToken = when (operator) {
+
+        val operator = inputSource.currentChar
+        // TODO token = actions[operator]
+        token = when (operator) { // TODO add arrowTypeFunction
             '=' -> {
-                if (inputSource.peekNextChar() != '=') {
-                    Token.Special(Token.Special.Type.ASSIGN, start)
+                inputSource.consumeCharacter()
+                if (inputSource.currentChar != '=') {
+                    inputSource.consumeCharacter()
+                    Token.Special(Token.Special.Type.ASSIGN, codePosition)
                 } else {
-                    inputSource.getNextChar()
+                    inputSource.consumeCharacter()
                     Token.ComparisonOperator(
                         value = Token.ComparisonOperator.Type.EQUAL,
-                        position = start
+                        position = codePosition
                     )
                 }
             }
-
             '!' -> {
-                if (inputSource.peekNextChar() != '=') {
-                    Token.UnaryOperator(Token.UnaryOperator.Type.NOT, start)
+                inputSource.consumeCharacter()
+                if (inputSource.currentChar != '=') {
+                    inputSource.consumeCharacter()
+                    Token.UnaryOperator(Token.UnaryOperator.Type.NOT, codePosition)
                 } else {
-                    inputSource.getNextChar()
+                    inputSource.consumeCharacter()
                     Token.ComparisonOperator(
                         value = Token.ComparisonOperator.Type.NOT_EQUAL,
-                        position = start
+                        position = codePosition
                     )
                 }
             }
-
             '<' -> {
-                if (inputSource.peekNextChar() == '=') {
-                    inputSource.getNextChar()
+                inputSource.consumeCharacter()
+
+                if (inputSource.currentChar == '=') {
+                    inputSource.consumeCharacter()
                     Token.ComparisonOperator(
                         value = Token.ComparisonOperator.Type.LESS_OR_EQUAL,
-                        position = start
+                        position = codePosition
                     )
                 } else {
+                    inputSource.consumeCharacter()
                     Token.ComparisonOperator(
                         value = Token.ComparisonOperator.Type.LESS,
-                        position = start
+                        position = codePosition
                     )
                 }
             }
-
             '>' -> {
-                if (inputSource.peekNextChar() == '=') {
-                    inputSource.getNextChar()
+                inputSource.consumeCharacter()
+                if (inputSource.currentChar == '=') {
+                    inputSource.consumeCharacter()
                     Token.ComparisonOperator(
                         value = Token.ComparisonOperator.Type.GREATER_OR_EQUAL,
-                        position = start
+                        position = codePosition
                     )
                 } else {
+                    inputSource.consumeCharacter()
                     Token.ComparisonOperator(
                         value = Token.ComparisonOperator.Type.GREATER,
-                        position = start
+                        position = codePosition
                     )
                 }
             }
-
             else -> return false
         }
+
         return true
     }
 
     private fun tryBuildLogicalOperator(): Boolean {
-        if (!inputSource.peekNextChar().isLogicalOperatorChar()) return false
+        if (!inputSource.currentChar.isLogicalOperatorChar()) return false
         val position = inputSource.getPosition()
-        val operator = inputSource.getNextChar()
-        lastToken = when (operator) {
+        token = when (inputSource.currentChar) {
             '&' -> {
-                if (inputSource.peekNextChar() != '&') {
+                if (inputSource.consumeCharacter() != '&') {
                     return false
                 }
-                inputSource.getNextChar()
                 Token.Conjunction(position)
             }
 
             else -> {
-                if (inputSource.peekNextChar() != '|') {
+                if (inputSource.consumeCharacter() != '|') {
                     return false
                 }
-                inputSource.getNextChar()
                 Token.Disjunction(position)
             }
         }
-        return true
-    }
-
-    private fun tryBuildFunReturnTypeArrow(): Boolean {
-        if (inputSource.peekNextChars(2) != "->") {
-            return false
-        }
-        val position = inputSource.getPosition()
-        inputSource.getNextChar()
-        inputSource.getNextChar()
-        lastToken = Token.FunReturnTypeArrow(position)
+        inputSource.consumeCharacter()
         return true
     }
 }

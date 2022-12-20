@@ -1,65 +1,56 @@
 package org.example.inputsource
 
-import okio.BufferedSource
-import okio.EOFException
-import okio.buffer
-import okio.source
-import kotlin.jvm.Throws
+import java.io.BufferedReader
+import java.io.FileReader
+import java.io.StringReader
 
-class InputSourceImpl private constructor(private val source: BufferedSource) : InputSource {
+class InputSourceImpl private constructor(private val source: BufferedReader) : InputSource {
     // TODO add support for multiplatform newlines (CR, LF, CRLF, 155, 25)
+    private var codePosition: CodePosition = CodePosition(0, 1, -1)
 
-    private var column = 1L
-    private var line = 1L
-    private var offset = 0L
-
-    private var currentChar: Char = 0.toChar()
-
-    @Suppress
-    override fun peekNextChar(): Char {
-        return try {
-            val char = source.peek().readUtf8CodePoint().toChar()
-            char
-        } catch (e: EOFException) {
-            EOF
-        }
+    init {
+        consumeCharacter()
     }
 
-    @Throws(EOFException::class)
-    override fun getNextChar(): Char {
-        currentChar = source.readUtf8CodePoint().toChar()
-        if (currentChar == '\n') {
-            line++
-            column = 1
-        } else {
-            column++
+    override var currentChar: Char = 0.toChar()
+
+    override fun getPosition() = codePosition
+
+    override fun consumeCharacter(): Char {
+        val readValue = source.read()
+
+        currentChar = when (readValue) {
+            -1 -> {
+                codePosition = codePosition.handleNextChar()
+                EOF
+            }
+            10 -> {
+                codePosition = codePosition.handleNewLine()
+                '\n'
+            }
+            else -> {
+                codePosition = codePosition.handleNextChar()
+                readValue.toChar()
+            }
         }
-        offset++
         return currentChar
     }
 
-    override fun peekNextChars(count: Int) = try {
-            source.peek().readUtf8(count.toLong())
-        } catch (e: EOFException) {
-            ""
-        }
-
-    override fun getPosition() = CodePosition(
-        column = column,
-        line = line,
-        offset = offset,
-    )
-
-    override fun getCurrentCharacter() = currentChar
-
     companion object {
-        fun fromSource(source: BufferedSource): InputSource {
+        fun fromSource(source: BufferedReader): InputSource {
             return InputSourceImpl(source)
         }
 
+        fun fromFile(path: String): InputSource {
+            return FileReader(path).use {
+                InputSourceImpl(BufferedReader(it))
+            }
+
+        }
+
         fun fromString(source: String): InputSource {
-            source.byteInputStream().source().use {
-                return fromSource(it.buffer())
+            return source.byteInputStream().use {
+                InputSourceImpl(StringReader(source).buffered())
             }
         }
     }

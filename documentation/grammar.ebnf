@@ -1,12 +1,12 @@
 // general
 program                         := {function_declaration | statement}, EOF ;
-statement                       := (expression | declaration | return_statement | assignment_statement | block | conditional_statement);
+statement                       := (expression | declaration | return_statement | assignment_statement | conditional_statement);
 block                           := "{", {statement}, "}", ;
 declaration                     := const_declaration | var_declaration;
 
 // conditional statements
 conditional_statement           := if_statement | while_statement ;
-if_statement                    := "if", "(", expression, ")", block, [else_statement] ;
+if_statement                    := "if", "(", conjunction_expression, ")", block, [else_statement] ;
 else_statement                  := "else", block ;
 while_statement                 := "while", "(", expression, ")", block ;
 
@@ -21,21 +21,20 @@ function_parameters             := [function_parameter, {",", function_parameter
 function_parameter              := type, identifier ;
 function_call                   := identifier, "(", argument_list, ")" ;
 argument_list                   := [expression, {",", expression}] ;
-return_statement                := "return", [expression] ;
+return_statement                := "return", [disjunction_expression] ;
 
 // expressions
-expression                      := conjunction_expression ;
 
-parenthesized_expression        := "(", expression, ")" ;
-conjunction_expression          := equality_expression, {and_operator, equality_expression} ;
+simple_expression               := literal_constant | identifier | function_call | parenthesized_expression;
+parenthesized_expression        := "(", disjunction_expression, ")" ;
 disjunction_expression          := conjunction_expression, {or_operator, conjunction_expression} ;
-comparison_expression           := null_safety_expression, {comparison_operator, null_safety_expression} ;
+conjunction_expression          := comparison_expression, {and_operator, comparision_expression} ;
+comparison_expression           := null_safety_expression, [comparison_operator, null_safety_expression] ;
 null_safety_expression          := additive_expression [null_safety_operator, expression] ;
 additive_expression             := multiplicative_expression, {additive_operator, multiplicative_expression} ;
 multiplicative_expression       := as_expression, {multiplicative_operator, as_expression} ;
 as_expression                   := unary_expression, [as_operator, type] ;
 unary_expression                := [unary_operator], simple_expression ;
-simple_expression               := literal_constant | identifier | function_call | parenthesized_expression | builtin_function_call ;
 
 // operators
 as_operator                     := "as" ;
