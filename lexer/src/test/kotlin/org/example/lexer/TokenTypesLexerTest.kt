@@ -23,28 +23,23 @@ class TokenTypesLexerTest {
         val inputSource = InputSourceImpl.fromString(string)
         val lexer = LexerImpl(inputSource, LexerConfig())
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.EOF)
+        assert(lexer.token is Token.EOF)
     }
 
     @Test
     fun `Integer token`() {
-        val string = "123"
+        val string = "123 0"
 
         val inputSource = InputSourceImpl.fromString(string)
         val lexer = LexerImpl(inputSource, LexerConfig())
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.Literal)
-        assertEquals((lexer.lastToken as Token.Literal).value, 123)
-        assertEquals((lexer.lastToken as Token.Literal).literalType, Token.Literal.Type.INTEGER)
-    }
-
-    @Test
-    fun `Invalid integer token`() {
-        val string = "123a"
-
-        val inputSource = InputSourceImpl.fromString(string)
-        val lexer = LexerImpl(inputSource, LexerConfig())
-        assertThrows<UnexpectedChar>("Unexpected character: a at position Line: 1 Column: 4") { lexer.getNextToken() }
+        assert(lexer.token is Token.Literal)
+        assertEquals(lexer.token?.value, 123)
+        assertEquals((lexer.token as Token.Literal).literalType, Token.Literal.Type.INTEGER)
+        lexer.getNextToken()
+        assert(lexer.token is Token.Literal)
+        assertEquals(lexer.token?.value, 0)
+        assertEquals((lexer.token as Token.Literal).literalType, Token.Literal.Type.INTEGER)
     }
 
     @Test
@@ -58,14 +53,18 @@ class TokenTypesLexerTest {
 
     @Test
     fun `Double token`() {
-        val string = "123.456"
+        val string = "123.456 0.0"
 
         val inputSource = InputSourceImpl.fromString(string)
         val lexer = LexerImpl(inputSource, LexerConfig())
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.Literal)
-        assertEquals((lexer.lastToken as Token.Literal).value, 123.456)
-        assertEquals((lexer.lastToken as Token.Literal).literalType, Token.Literal.Type.DOUBLE)
+        assert(lexer.token is Token.Literal)
+        assertEquals(lexer.token?.value, 123.456)
+        assertEquals((lexer.token as Token.Literal).literalType, Token.Literal.Type.DOUBLE)
+        lexer.getNextToken()
+        assert(lexer.token is Token.Literal)
+        assertEquals(lexer.token?.value, 0.0)
+        assertEquals((lexer.token as Token.Literal).literalType, Token.Literal.Type.DOUBLE)
     }
 
     @Test
@@ -92,8 +91,8 @@ class TokenTypesLexerTest {
         val lexer = LexerImpl(inputSource, LexerConfig())
         for (result in results) {
             lexer.getNextToken()
-            assert(lexer.lastToken is Token.Identifier)
-            assertEquals(result, (lexer.lastToken as Token.Identifier).value)
+            assert(lexer.token is Token.Identifier)
+            assertEquals(result, lexer.token?.value)
         }
     }
 
@@ -114,9 +113,9 @@ class TokenTypesLexerTest {
         val inputSource = InputSourceImpl.fromString(string)
         val lexer = LexerImpl(inputSource, LexerConfig())
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.Literal)
-        assertEquals("Hello world", (lexer.lastToken as Token.Literal).value)
-        assertEquals((lexer.lastToken as Token.Literal).literalType, Token.Literal.Type.STRING)
+        assert(lexer.token is Token.Literal)
+        assertEquals("Hello world", lexer.token?.value)
+        assertEquals((lexer.token as Token.Literal).literalType, Token.Literal.Type.STRING)
     }
 
     @Test
@@ -135,9 +134,9 @@ class TokenTypesLexerTest {
         val inputSource = InputSourceImpl.fromString(string)
         val lexer = LexerImpl(inputSource, LexerConfig())
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.Literal)
-        assertEquals((lexer.lastToken as Token.Literal).value, "Hello \t world")
-        assertEquals((lexer.lastToken as Token.Literal).literalType, Token.Literal.Type.STRING)
+        assert(lexer.token is Token.Literal)
+        assertEquals(lexer.token?.value, "Hello \t world")
+        assertEquals((lexer.token as Token.Literal).literalType, Token.Literal.Type.STRING)
     }
 
     @Test
@@ -165,9 +164,9 @@ class TokenTypesLexerTest {
         val inputSource = InputSourceImpl.fromString(string)
         val lexer = LexerImpl(inputSource, LexerConfig())
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.Literal)
-        assertEquals((lexer.lastToken as Token.Literal).value, null)
-        assertEquals((lexer.lastToken as Token.Literal).literalType, Token.Literal.Type.NULL)
+        assert(lexer.token is Token.Literal)
+        assertEquals(lexer.token?.value, null)
+        assertEquals((lexer.token as Token.Literal).literalType, Token.Literal.Type.NULL)
     }
 
     @Test
@@ -177,7 +176,7 @@ class TokenTypesLexerTest {
         val inputSource = InputSourceImpl.fromString(string)
         val lexer = LexerImpl(inputSource, LexerConfig())
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.NullSafetyOperator)
+        assert(lexer.token is Token.NullSafetyOperator)
     }
 
     @Test
@@ -187,8 +186,8 @@ class TokenTypesLexerTest {
         val inputSource = InputSourceImpl.fromString(string)
         val lexer = LexerImpl(inputSource, LexerConfig())
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.AdditiveOperator)
-        assertEquals((lexer.lastToken as Token.AdditiveOperator).value, "+")
+        assert(lexer.token is Token.AdditiveOperator)
+        assertEquals(lexer.token?.value, "+")
     }
 
     @Test
@@ -198,16 +197,16 @@ class TokenTypesLexerTest {
         val inputSource = InputSourceImpl.fromString(string)
         val lexer = LexerImpl(inputSource, LexerConfig())
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.MultiplicativeOperator)
+        assert(lexer.token is Token.MultiplicativeOperator)
         assertEquals(
-            (lexer.lastToken as Token.MultiplicativeOperator).value, Token.MultiplicativeOperator.Type.MULTIPLY
+            lexer.token?.value, Token.MultiplicativeOperator.Type.MULTIPLY
         )
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.MultiplicativeOperator)
-        assertEquals((lexer.lastToken as Token.MultiplicativeOperator).value, Token.MultiplicativeOperator.Type.DIVIDE)
+        assert(lexer.token is Token.MultiplicativeOperator)
+        assertEquals(lexer.token?.value, Token.MultiplicativeOperator.Type.DIVIDE)
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.MultiplicativeOperator)
-        assertEquals((lexer.lastToken as Token.MultiplicativeOperator).value, Token.MultiplicativeOperator.Type.MODULO)
+        assert(lexer.token is Token.MultiplicativeOperator)
+        assertEquals(lexer.token?.value, Token.MultiplicativeOperator.Type.MODULO)
     }
 
     @Test
@@ -217,25 +216,25 @@ class TokenTypesLexerTest {
         val inputSource = InputSourceImpl.fromString(string)
         val lexer = LexerImpl(inputSource, LexerConfig())
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.ComparisonOperator)
-        assertEquals((lexer.lastToken as Token.ComparisonOperator).value, Token.ComparisonOperator.Type.EQUAL)
+        assert(lexer.token is Token.ComparisonOperator)
+        assertEquals(lexer.token?.value, Token.ComparisonOperator.Type.EQUAL)
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.ComparisonOperator)
-        assertEquals((lexer.lastToken as Token.ComparisonOperator).value, Token.ComparisonOperator.Type.NOT_EQUAL)
+        assert(lexer.token is Token.ComparisonOperator)
+        assertEquals(lexer.token?.value, Token.ComparisonOperator.Type.NOT_EQUAL)
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.ComparisonOperator)
-        assertEquals((lexer.lastToken as Token.ComparisonOperator).value, Token.ComparisonOperator.Type.GREATER)
+        assert(lexer.token is Token.ComparisonOperator)
+        assertEquals(lexer.token?.value, Token.ComparisonOperator.Type.GREATER)
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.ComparisonOperator)
-        assertEquals((lexer.lastToken as Token.ComparisonOperator).value, Token.ComparisonOperator.Type.LESS)
+        assert(lexer.token is Token.ComparisonOperator)
+        assertEquals(lexer.token?.value, Token.ComparisonOperator.Type.LESS)
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.ComparisonOperator)
+        assert(lexer.token is Token.ComparisonOperator)
         assertEquals(
-            (lexer.lastToken as Token.ComparisonOperator).value, Token.ComparisonOperator.Type.GREATER_OR_EQUAL
+            lexer.token?.value, Token.ComparisonOperator.Type.GREATER_OR_EQUAL
         )
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.ComparisonOperator)
-        assertEquals((lexer.lastToken as Token.ComparisonOperator).value, Token.ComparisonOperator.Type.LESS_OR_EQUAL)
+        assert(lexer.token is Token.ComparisonOperator)
+        assertEquals(lexer.token?.value, Token.ComparisonOperator.Type.LESS_OR_EQUAL)
     }
 
     @Test
@@ -245,26 +244,26 @@ class TokenTypesLexerTest {
         val inputSource = InputSourceImpl.fromString(string)
         val lexer = LexerImpl(inputSource, LexerConfig())
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.Special)
-        assertEquals((lexer.lastToken as Token.Special).value, Token.Special.Type.QUESTION_MARK)
+        assert(lexer.token is Token.Special)
+        assertEquals(lexer.token?.value, Token.Special.Type.QUESTION_MARK)
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.Special)
-        assertEquals((lexer.lastToken as Token.Special).value, Token.Special.Type.COMMA)
+        assert(lexer.token is Token.Special)
+        assertEquals(lexer.token?.value, Token.Special.Type.COMMA)
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.Special)
-        assertEquals((lexer.lastToken as Token.Special).value, Token.Special.Type.LPAREN)
+        assert(lexer.token is Token.Special)
+        assertEquals(lexer.token?.value, Token.Special.Type.LPAREN)
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.Special)
-        assertEquals((lexer.lastToken as Token.Special).value, Token.Special.Type.RPAREN)
+        assert(lexer.token is Token.Special)
+        assertEquals(lexer.token?.value, Token.Special.Type.RPAREN)
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.Special)
-        assertEquals((lexer.lastToken as Token.Special).value, Token.Special.Type.LBRACE)
+        assert(lexer.token is Token.Special)
+        assertEquals(lexer.token?.value, Token.Special.Type.LBRACE)
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.Special)
-        assertEquals((lexer.lastToken as Token.Special).value, Token.Special.Type.RBRACE)
+        assert(lexer.token is Token.Special)
+        assertEquals(lexer.token?.value, Token.Special.Type.RBRACE)
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.Special)
-        assertEquals((lexer.lastToken as Token.Special).value, Token.Special.Type.ASSIGN)
+        assert(lexer.token is Token.Special)
+        assertEquals(lexer.token?.value, Token.Special.Type.ASSIGN)
     }
 
     @Test
@@ -274,7 +273,7 @@ class TokenTypesLexerTest {
         val inputSource = InputSourceImpl.fromString(string)
         val lexer = LexerImpl(inputSource, LexerConfig())
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.Conjunction)
+        assert(lexer.token is Token.Conjunction)
     }
 
     @Test
@@ -284,7 +283,7 @@ class TokenTypesLexerTest {
         val inputSource = InputSourceImpl.fromString(string)
         val lexer = LexerImpl(inputSource, LexerConfig())
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.Disjunction)
+        assert(lexer.token is Token.Disjunction)
     }
 
     @Test
@@ -294,11 +293,11 @@ class TokenTypesLexerTest {
         val inputSource = InputSourceImpl.fromString(string)
         val lexer = LexerImpl(inputSource, LexerConfig())
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.UnaryOperator)
-        assertEquals((lexer.lastToken as Token.UnaryOperator).value, Token.UnaryOperator.Type.NOT)
+        assert(lexer.token is Token.UnaryOperator)
+        assertEquals(lexer.token?.value, Token.UnaryOperator.Type.NOT)
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.UnaryOperator)
-        assertEquals((lexer.lastToken as Token.UnaryOperator).value, Token.UnaryOperator.Type.MINUS)
+        assert(lexer.token is Token.UnaryOperator)
+        assertEquals(lexer.token?.value, Token.UnaryOperator.Type.MINUS)
     }
 
     @Test
@@ -308,48 +307,55 @@ class TokenTypesLexerTest {
         val inputSource = InputSourceImpl.fromString(string)
         val lexer = LexerImpl(inputSource, LexerConfig())
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.AsOperator)
+        assertEquals(lexer.token?.value, Token.Keyword.Type.AS)
     }
 
     @Test
     fun `Keywords tokens`() {
-        val string = "if else while return fun var const bool int double string"
+        val string = "if else while return fun var const bool int double string true false"
 
         val inputSource = InputSourceImpl.fromString(string)
         val lexer = LexerImpl(inputSource, LexerConfig())
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.Keyword)
-        assertEquals((lexer.lastToken as Token.Keyword).value, Token.Keyword.Type.IF)
+        assert(lexer.token is Token.Keyword)
+        assertEquals(lexer.token?.value, Token.Keyword.Type.IF)
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.Keyword)
-        assertEquals((lexer.lastToken as Token.Keyword).value, Token.Keyword.Type.ELSE)
+        assert(lexer.token is Token.Keyword)
+        assertEquals(lexer.token?.value, Token.Keyword.Type.ELSE)
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.Keyword)
-        assertEquals((lexer.lastToken as Token.Keyword).value, Token.Keyword.Type.WHILE)
+        assert(lexer.token is Token.Keyword)
+        assertEquals(lexer.token?.value, Token.Keyword.Type.WHILE)
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.Keyword)
-        assertEquals((lexer.lastToken as Token.Keyword).value, Token.Keyword.Type.RETURN)
+        assert(lexer.token is Token.Keyword)
+        assertEquals(lexer.token?.value, Token.Keyword.Type.RETURN)
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.Keyword)
-        assertEquals((lexer.lastToken as Token.Keyword).value, Token.Keyword.Type.FUN)
+        assert(lexer.token is Token.Keyword)
+        assertEquals(lexer.token?.value, Token.Keyword.Type.FUN)
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.Keyword)
-        assertEquals((lexer.lastToken as Token.Keyword).value, Token.Keyword.Type.VAR)
+        assert(lexer.token is Token.Keyword)
+        assertEquals(lexer.token?.value, Token.Keyword.Type.VAR)
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.Keyword)
-        assertEquals((lexer.lastToken as Token.Keyword).value, Token.Keyword.Type.CONST)
+        assert(lexer.token is Token.Keyword)
+        assertEquals(lexer.token?.value, Token.Keyword.Type.CONST)
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.Keyword)
-        assertEquals((lexer.lastToken as Token.Keyword).value, Token.Keyword.Type.BOOL)
+        assert(lexer.token is Token.Keyword)
+        assertEquals(lexer.token?.value, Token.Keyword.Type.BOOL)
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.Keyword)
-        assertEquals((lexer.lastToken as Token.Keyword).value, Token.Keyword.Type.INT)
+        assert(lexer.token is Token.Keyword)
+        assertEquals(lexer.token?.value, Token.Keyword.Type.INT)
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.Keyword)
-        assertEquals((lexer.lastToken as Token.Keyword).value, Token.Keyword.Type.DOUBLE)
+        assert(lexer.token is Token.Keyword)
+        assertEquals(lexer.token?.value, Token.Keyword.Type.DOUBLE)
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.Keyword)
-        assertEquals((lexer.lastToken as Token.Keyword).value, Token.Keyword.Type.STRING)
+        assert(lexer.token is Token.Keyword)
+        assertEquals(lexer.token?.value, Token.Keyword.Type.STRING)
+        lexer.getNextToken()
+        assert(lexer.token is Token.Literal)
+        assertEquals(lexer.token?.value, true)
+        assert(lexer.token?.value == true)
+        lexer.getNextToken()
+        assert(lexer.token is Token.Literal)
+        assertEquals(lexer.token?.value, false)
     }
 
     @Test
@@ -359,7 +365,7 @@ class TokenTypesLexerTest {
         val inputSource = InputSourceImpl.fromString(string)
         val lexer = LexerImpl(inputSource, LexerConfig())
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.FunReturnTypeArrow)
+        assert(lexer.token is Token.FunReturnTypeArrow)
     }
 
     @Test
@@ -369,8 +375,8 @@ class TokenTypesLexerTest {
         val inputSource = InputSourceImpl.fromString(string)
         val lexer = LexerImpl(inputSource, LexerConfig())
         lexer.getNextToken()
-        assert(lexer.lastToken is Token.Comment)
-        assertEquals(" comment", (lexer.lastToken as Token.Comment).value)
+        assert(lexer.token is Token.Comment)
+        assertEquals(" comment", lexer.token?.value)
     }
 
     @Test

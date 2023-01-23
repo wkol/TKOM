@@ -1,4 +1,4 @@
-package org.example.parser
+package org.example.interpreter
 
 import org.junit.jupiter.api.Test
 

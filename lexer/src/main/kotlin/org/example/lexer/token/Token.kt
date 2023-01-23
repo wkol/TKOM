@@ -89,9 +89,6 @@ sealed class Token(
             QUESTION_MARK,
         }
     }
-    data class AsOperator(
-        override val position: CodePosition
-    ) : Token(TokenType.AS_OPERATOR, "as", position)
 
     data class Keyword(
         override val value: Type,
@@ -109,6 +106,7 @@ sealed class Token(
             INT,
             DOUBLE,
             STRING,
+            AS,
         }
     }
 
