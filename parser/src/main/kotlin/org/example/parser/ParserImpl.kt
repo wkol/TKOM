@@ -1,25 +1,31 @@
 package org.example.parser
 
 import org.example.errorhandler.ErrorHandler
+import org.example.errorhandler.exception.parser.DuplicateFunctionDeclarationException
+import org.example.errorhandler.exception.parser.InvalidConditionException
+import org.example.errorhandler.exception.parser.InvalidExpressionException
+import org.example.errorhandler.exception.parser.InvalidFunctionDeclarationException
+import org.example.errorhandler.exception.parser.InvalidFunctionParamDeclarationException
+import org.example.errorhandler.exception.parser.InvalidTypeException
+import org.example.errorhandler.exception.parser.InvalidVariableDeclaration
+import org.example.errorhandler.exception.parser.MissingExpressionException
+import org.example.errorhandler.exception.parser.UnmatchedParenthesisException
 import org.example.lexer.Lexer
 import org.example.lexer.token.Token
 import org.example.lexer.token.TokenType
+import org.example.parser.data.AdditiveOperator
+import org.example.parser.data.AdditiveOperatorWithExpression
+import org.example.parser.data.ComparisonOperator
 import org.example.parser.data.Expression
+import org.example.parser.data.MultiplicativeOperator
+import org.example.parser.data.MultiplicativeOperatorWithExpression
 import org.example.parser.data.Parameter
-import org.example.parser.data.Function
-import org.example.parser.data.Operator
-import org.example.parser.data.OperatorWithExpression
 import org.example.parser.data.Program
+import org.example.parser.data.ProgramFunction
 import org.example.parser.data.Statement
 import org.example.parser.data.Type
-import org.example.parser.exception.DuplicateFunctionDeclarationException
-import org.example.parser.exception.InvalidConditionException
-import org.example.parser.exception.InvalidExpressionException
-import org.example.parser.exception.InvalidFunctionDeclarationException
-import org.example.parser.exception.InvalidFunctionParamDeclarationException
-import org.example.parser.exception.InvalidTypeException
-import org.example.parser.exception.InvalidVariableDeclaration
-import org.example.parser.exception.UnmatchedParenthesisException
+import org.example.parser.data.UnaryOperator
+import org.example.parser.data.UserDefinedFunction
 
 class ParserImpl(
     override val lexer: Lexer,
@@ -39,65 +45,68 @@ class ParserImpl(
 
     override fun parse(): Program {
         val statements = mutableListOf<Statement>()
-        val functions = mutableMapOf<String, Function>()
-        while (lexer.token?.value != "EOF") {
-            tryParseFunction()?.let {
-                if (functions.containsKey(it.name)) {
-                    errorHandler.handleParserError(DuplicateFunctionDeclarationException(lexer.getCodePosition(), it.name))
+        val functions = mutableMapOf<String, ProgramFunction>()
+        do {
+            val functionOrStatement = tryParseFunction() ?: tryParseStatement()
+            if (functionOrStatement is ProgramFunction) {
+                if (functions.containsKey(functionOrStatement.name)) {
+                    errorHandler.handleParserError(
+                        DuplicateFunctionDeclarationException(
+                            lexer.getCodePosition(),
+                            functionOrStatement.name
+                        )
+                    )
                 } else {
-                    functions[it.name] = it
+                    functions[functionOrStatement.name] = functionOrStatement
                 }
-            } ?: tryParseStatement()?.let {
-                statements.add(it)
+            } else if (functionOrStatement is Statement) {
+                statements.add(functionOrStatement)
             }
-        }
+        } while (functionOrStatement != null)
         return Program(statements, functions)
     }
 
 
-    private fun tryParseFunction(): Function? {
+    private fun tryParseFunction(): ProgramFunction? {
         if (!lexer.token.checkAndGoNext(Token.Keyword.Type.FUN)) return null
 
         if (lexer.token?.type != TokenType.IDENTIFIER) {
-            return null
+            errorHandler.handleParserError(InvalidFunctionDeclarationException(lexer.getCodePosition()))
         }
         val name = lexer.token?.value as String
         nextToken()
+
         if (!lexer.token.checkAndGoNext(Token.Special.Type.LPAREN)) {
             errorHandler.handleParserError(InvalidFunctionDeclarationException(lexer.getCodePosition()))
         }
+
         val args = tryParseFunctionParams()
+
         if (!lexer.token.checkAndGoNext(Token.Special.Type.RPAREN)) {
             errorHandler.handleParserError(InvalidExpressionException(lexer.getCodePosition()))
         }
-        val returnType = tryParseFunctionReturnType()
 
-        val body = tryParseBlock()
-        return Function(name, args, returnType, body)
+        val returnType = tryParseFunctionReturnType() ?: Type(Type.TypePrimitive.VOID, false)
+
+        val body = tryParseBlockWithBraces()
+
+        return UserDefinedFunction(name, args, returnType, body)
     }
 
     fun tryParseFunctionReturnType(): Type? {
-        if (lexer.token?.value == Token.Special.Type.LBRACE) {
-            return Type(Type.TypePrimitive.VOID, false)
-        }
         if (!lexer.token.checkAndGoNext("->")) {
-            errorHandler.handleParserError(InvalidExpressionException(lexer.getCodePosition()))
+            return Type(Type.TypePrimitive.VOID, true)
         }
         return tryParseType()
     }
 
     private fun tryParseBlock(): List<Statement> {
-        if (!lexer.token.checkAndGoNext(Token.Special.Type.LBRACE)) {
-            errorHandler.handleParserError(InvalidExpressionException(lexer.getCodePosition()))
+        return mutableListOf<Statement>().apply {
+            do {
+                val statement = tryParseStatement()
+                statement?.let { add(statement) }
+            } while (statement != null)
         }
-        val statements = mutableListOf<Statement>()
-        while (lexer.token?.value != Token.Special.Type.RBRACE) {
-            tryParseStatement()?.let {
-                statements.add(it)
-            }
-        }
-        nextToken()
-        return statements
     }
 
     private fun tryParseStatement(): Statement? {
@@ -105,13 +114,17 @@ class ParserImpl(
             ?: tryParseWhileStatement()
             ?: tryParseReturnStatement()
             ?: tryParseVariableDeclaration()
-            ?: tryParseAssignmentStatement()
             ?: tryParseExpressionStatement()
     }
 
     fun tryParseExpressionStatement(): Statement.ExpressionStatement? {
         val expression = tryParseDisjunctionExpression() ?: return null
-        return Statement.ExpressionStatement(expression)
+        val assignedExpression = if (lexer.token.checkAndGoNext(Token.Special.Type.ASSIGN)) {
+            tryParseDisjunctionExpression() ?: return null
+        } else {
+            null
+        }
+        return Statement.ExpressionStatement(expression, assignedExpression)
     }
 
 
@@ -125,41 +138,55 @@ class ParserImpl(
         if (!lexer.token.checkAndGoNext(Token.Special.Type.RPAREN)) {
             errorHandler.handleParserError(InvalidConditionException(lexer.getCodePosition()))
         }
-        val body = tryParseBlock()
-        if (!lexer.token.checkAndGoNext(Token.Keyword.Type.ELSE)) return Statement.IfStatement(condition, body)
-        val elseBody = tryParseBlock()
-
+        val body = tryParseBlockWithBraces()
+        if (!lexer.token.checkAndGoNext(Token.Keyword.Type.ELSE)) return Statement.IfStatement(
+            condition = condition,
+            body = body,
+        )
+        val elseBody = tryParseBlockWithBraces()
         return Statement.IfStatement(condition, body, elseBody)
     }
 
     fun tryParseVariableDeclaration(): Statement.VariableDeclaration? {
         var isImmutable = false
+        val codePosition = lexer.getCodePosition()
         when (lexer.token?.value) {
             Token.Keyword.Type.VAR -> {
                 nextToken()
             }
+
             Token.Keyword.Type.CONST -> {
                 isImmutable = true
                 nextToken()
             }
+
             else -> {
                 return null
             }
         }
         val type = tryParseType() ?: run {
-            errorHandler.handleParserError(InvalidTypeException(lexer.getCodePosition()))
+            errorHandler.handleParserError(InvalidTypeException(codePosition))
             null
         }
         if (lexer.token?.type != TokenType.IDENTIFIER) {
-            errorHandler.handleParserError(InvalidVariableDeclaration(lexer.getCodePosition()))
+            errorHandler.handleParserError(InvalidVariableDeclaration(codePosition))
         }
         val name = lexer.token?.value as String
         nextToken()
         if (!lexer.token.checkAndGoNext(Token.Special.Type.ASSIGN)) {
-            return Statement.VariableDeclaration(isImmutable, name, type)
+            return Statement.VariableDeclaration(
+                isImmutable = isImmutable,
+                name = name,
+                type = type,
+            )
         }
         val expression = tryParseDisjunctionExpression()
-        return Statement.VariableDeclaration(isImmutable, name, type, expression)
+        return Statement.VariableDeclaration(
+            isImmutable = isImmutable,
+            name = name,
+            type = type,
+            initialValue = expression,
+        )
     }
 
     fun tryParseFunctionParams(): List<Parameter> {
@@ -170,7 +197,7 @@ class ParserImpl(
             errorHandler.handleParserError(InvalidTypeException(lexer.getCodePosition()))
         }
         val parameters = mutableListOf<Parameter>()
-        while (lexer.token?.value != Token.Special.Type.RPAREN) {
+        while (lexer.token?.value != Token.Special.Type.RPAREN) { // TODO refactor while
             val type = tryParseType()
             if (type == null || lexer.token?.type != TokenType.IDENTIFIER) {
                 errorHandler.handleParserError(InvalidFunctionParamDeclarationException(lexer.getCodePosition()))
@@ -196,27 +223,8 @@ class ParserImpl(
             errorHandler.handleParserError(InvalidConditionException(lexer.getCodePosition()))
             return null
         }
-        val body = tryParseBlock()
+        val body = tryParseBlockWithBraces()
         return Statement.WhileStatement(condition ?: return null, body)
-    }
-
-    fun tryParseAssignmentStatement(): Statement? {
-        if (lexer.token?.type != TokenType.IDENTIFIER) {
-            return null
-        }
-        val variable = lexer.token?.value as String
-        nextToken()
-        if (lexer.token?.value != Token.Special.Type.ASSIGN) {
-            return if (lexer.token?.value == Token.Special.Type.LPAREN) {
-                val arguments = tryParseFunctionCallParams() ?: emptyList()
-                Statement.ExpressionStatement(Expression.SimpleExpression.FunctionCall(variable, arguments))
-            } else {
-                Statement.ExpressionStatement(Expression.SimpleExpression.Identifier(variable))
-            }
-        }
-        nextToken()
-        val expression = tryParseDisjunctionExpression() ?: throw InvalidExpressionException(lexer.getCodePosition())
-        return Statement.AssignmentStatement(variable, expression)
     }
 
     fun tryParseReturnStatement(): Statement.ReturnStatement? {
@@ -226,81 +234,49 @@ class ParserImpl(
         return Statement.ReturnStatement(expression)
     }
 
-    private fun tryParseParenthesizedExpression(): Expression? {
-        if (!lexer.token.checkAndGoNext(Token.Special.Type.LPAREN)) return null
-        val expression = tryParseDisjunctionExpression()
-        if (!lexer.token.checkAndGoNext(Token.Special.Type.RPAREN)) {
-            errorHandler.handleParserError(UnmatchedParenthesisException(lexer.getCodePosition()))
-            return null
-        }
-        return expression
-    }
-
     private fun tryParseDisjunctionExpression(): Expression? {
-        val left = tryParseConjunctionExpression()
+        val left = tryParseConjunctionExpression() ?: return null
         val right = mutableListOf<Expression>()
         while (lexer.token is Token.Disjunction) {
             nextToken()
             tryParseConjunctionExpression()?.let {
                 right.add(it)
+            } ?: run {
+                errorHandler.handleParserError(MissingExpressionException(lexer.getCodePosition()))
             }
         }
         return if (right.isEmpty()) left else Expression.DisjunctionExpression(left, right)
     }
 
     private fun tryParseConjunctionExpression(): Expression? {
-        val left = tryParseComparisonExpression()
+        val left = tryParseComparisonExpression() ?: return null
         val right = mutableListOf<Expression>()
         while (lexer.token is Token.Conjunction) {
             nextToken()
             tryParseComparisonExpression()?.let {
                 right.add(it)
+            } ?: run {
+                errorHandler.handleParserError(MissingExpressionException(lexer.getCodePosition()))
             }
         }
         return if (right.isEmpty()) left else Expression.ConjunctionExpression(left, right)
     }
 
     private fun tryParseComparisonExpression(): Expression? {
-        val left = tryParseNullSafetyExpression()
-        val operator = tryParseComparisonOperator() ?: return left
+        val left = tryParseNullSafetyExpression() ?: return null
+        val operator = ComparisonOperator.fromToken(lexer.token) ?: return left
+        nextToken()
         val right = tryParseNullSafetyExpression()
-        return Expression.ComparisonExpression(left, operator, right)
-    }
-
-    private fun tryParseComparisonOperator(): Operator? {
-        if (lexer.token !is Token.ComparisonOperator) {
+        if (right == null) {
+            errorHandler.handleParserError(MissingExpressionException(lexer.getCodePosition()))
             return null
-        }
-        return when (lexer.token?.value) {
-            Token.ComparisonOperator.Type.EQUAL -> {
-                nextToken()
-                Operator.Equal
-            }
-            Token.ComparisonOperator.Type.NOT_EQUAL -> {
-                nextToken()
-                Operator.NotEqual
-            }
-            Token.ComparisonOperator.Type.GREATER -> {
-                nextToken()
-                Operator.Greater
-            }
-            Token.ComparisonOperator.Type.GREATER_OR_EQUAL -> {
-                nextToken()
-                Operator.GreaterOrEqual
-            }
-            Token.ComparisonOperator.Type.LESS -> {
-                nextToken()
-                Operator.Less
-            }
-            else -> {
-                nextToken()
-                Operator.LessOrEqual
-            }
+        } else {
+            return Expression.ComparisonExpression(left, operator, right)
         }
     }
 
     private fun tryParseNullSafetyExpression(): Expression? {
-        val left = tryParseAdditiveExpression()
+        val left = tryParseAdditiveExpression() ?: return null
         if (!lexer.token.checkAndGoNext("?:")) return left
         val expression = tryParseDisjunctionExpression()
         if (expression == null) {
@@ -311,13 +287,15 @@ class ParserImpl(
     }
 
     private fun tryParseAdditiveExpression(): Expression? {
-        val left = tryParseMultiplicativeExpression()
-        val right = mutableListOf<OperatorWithExpression>()
+        val left = tryParseMultiplicativeExpression() ?: return null
+        val right = mutableListOf<AdditiveOperatorWithExpression>()
         while (lexer.token.isAdditiveOperator()) {
-            val operator = Operator.Plus
+            val operator = AdditiveOperator.fromToken(lexer.token) ?: return null
             nextToken()
             tryParseMultiplicativeExpression()?.let {
-                right.add(OperatorWithExpression(operator, it))
+                right.add(AdditiveOperatorWithExpression(operator, it)) // TODO maybe refactor
+            } ?: run {
+                errorHandler.handleParserError(MissingExpressionException(lexer.getCodePosition()))
             }
         }
         if (right.isEmpty()) {
@@ -327,17 +305,19 @@ class ParserImpl(
     }
 
     private fun tryParseMultiplicativeExpression(): Expression? {
-        val left = tryParseAsExpression()
-        val right = mutableListOf<OperatorWithExpression>()
+        val left = tryParseAsExpression() ?: return null
+        val right = mutableListOf<MultiplicativeOperatorWithExpression>()
         while (lexer.token.isMultiplicativeOperator()) {
-            val operator = when(lexer.token?.value) {
-                Token.MultiplicativeOperator.Type.MULTIPLY -> Operator.Mul
-                Token.MultiplicativeOperator.Type.DIVIDE -> Operator.Div
-                else -> Operator.Mod
+            val operator = when (lexer.token?.value) {
+                Token.MultiplicativeOperator.Type.MULTIPLY -> MultiplicativeOperator.Mul
+                Token.MultiplicativeOperator.Type.DIVIDE -> MultiplicativeOperator.Div
+                else -> MultiplicativeOperator.Mod
             }
             nextToken()
             tryParseAsExpression()?.let {
-                right.add(OperatorWithExpression(operator, it))
+                right.add(MultiplicativeOperatorWithExpression(operator, it))
+            } ?: run {
+                errorHandler.handleParserError(MissingExpressionException(lexer.getCodePosition()))
             }
         }
         if (right.isEmpty()) {
@@ -347,80 +327,89 @@ class ParserImpl(
     }
 
     private fun tryParseAsExpression(): Expression? {
-        val unaryExpression = tryParseUnaryExpression()
-        val type = if (lexer.token.checkAndGoNext(Token.Keyword.Type.AS)) {
-            tryParseType()
-        } else {
-            null
-        }
-        if (type == null) {
-            return unaryExpression
+        val unaryExpression = tryParseUnaryExpression() ?: return null
+        if (!lexer.token.checkAndGoNext(Token.Keyword.Type.AS)) return unaryExpression
+        val type = tryParseType() ?: run {
+            errorHandler.handleParserError(InvalidTypeException(lexer.getCodePosition()))
+            return null
         }
         return Expression.AsExpression(unaryExpression, type)
     }
 
+    private fun tryParseUnaryOperator(): UnaryOperator? {
+        val operator = UnaryOperator.fromToken(lexer.token) ?: return null
+        nextToken()
+        return operator
+    }
+
     private fun tryParseUnaryExpression(): Expression? {
-        val operator = if (lexer.token is Token.UnaryOperator) {
-            if (lexer.token?.value == Token.UnaryOperator.Type.NOT) {
-                nextToken()
-                Operator.Not
-            } else {
-                nextToken()
-                Operator.Minus
-            }
-        } else {
-            null
-        }
+        val operator = tryParseUnaryOperator()
         val expression = tryParseSimpleExpression()
         if (operator == null) {
             return expression
-        }
-        return Expression.UnaryExpression(operator, expression)
-    }
-
-    private fun tryParseSimpleExpression(): Expression.SimpleExpression? = when (lexer.token) {
-            is Token.Literal -> {
-                val literal = lexer.token?.value
-                nextToken()
-                Expression.SimpleExpression.Literal(literal)
-            }
-            is Token.Identifier -> {
-                val identifier = lexer.token?.value as String
-                nextToken()
-                if (lexer.token?.value == Token.Special.Type.LPAREN) {
-                    val params = tryParseFunctionCallParams() ?: emptyList()
-                    Expression.SimpleExpression.FunctionCall(identifier, params)
-                } else {
-                    Expression.SimpleExpression.Identifier(identifier)
-                }
-            }
-
-            else -> {
-                if (lexer.token?.value == Token.Special.Type.LPAREN) {
-                    val expression = tryParseParenthesizedExpression()
-                    Expression.SimpleExpression.ParenthesizedExpression(expression)
-                } else {
-                    errorHandler.handleParserError(InvalidExpressionException(lexer.getCodePosition()))
-                    null
-                }
-            }
-    }
-
-    private fun tryParseFunctionCallParams(): List<Expression>? {
-        if (!lexer.token.checkAndGoNext(Token.Special.Type.LPAREN)) {
+        } else if (expression == null) {
+            errorHandler.handleParserError(MissingExpressionException(lexer.getCodePosition()))
             return null
+        } else {
+            return Expression.UnaryExpression(operator, expression)
         }
-        if (lexer.token.checkAndGoNext(Token.Special.Type.RPAREN)) return emptyList()
+    }
 
-        val params = mutableListOf<Expression>()
-        while (lexer.token?.value != Token.Special.Type.RPAREN) {
-            tryParseDisjunctionExpression()?.let {
-                params.add(it)
-            }
-            lexer.token.checkAndGoNext(Token.Special.Type.COMMA)
+    private fun tryParseSimpleExpression(): Expression? = when (val token = lexer.token) {
+        is Token.Literal -> {
+            val literal = token.value
+            nextToken()
+            Expression.SimpleExpression.Literal(literal)
         }
-        nextToken()
-        return params
+
+        is Token.Identifier -> {
+            val identifier = token.value
+            nextToken()
+            if (lexer.token.checkAndGoNext(Token.Special.Type.LPAREN)) {
+                val args = tryParseFunctionCallArgs() ?: emptyList()
+                if (!lexer.token.checkAndGoNext(Token.Special.Type.RPAREN)) {
+                    errorHandler.handleParserError(UnmatchedParenthesisException(lexer.getCodePosition()))
+                }
+                Expression.SimpleExpression.FunctionCall(identifier, args)
+            } else {
+                Expression.SimpleExpression.Identifier(identifier)
+            }
+        }
+
+        else -> {
+            if (lexer.token.checkAndGoNext(Token.Special.Type.LPAREN)) {
+                val expression = tryParseDisjunctionExpression()
+                if (!lexer.token.checkAndGoNext(Token.Special.Type.RPAREN)) {
+                    errorHandler.handleParserError(UnmatchedParenthesisException(lexer.getCodePosition()))
+                    null
+                } else {
+                    expression
+                }
+            } else {
+                null
+            }
+        }
+    }
+
+    private fun tryParseFunctionCallArgs(): List<Expression>? {
+        return mutableListOf(tryParseDisjunctionExpression() ?: return null).apply {
+            while (lexer.token.checkAndGoNext(Token.Special.Type.COMMA)) {
+                tryParseDisjunctionExpression()?.let { add(it) } ?: errorHandler.handleParserError(
+                    MissingExpressionException(lexer.getCodePosition())
+                )
+            }
+        }
+    }
+
+    private fun tryParseBlockWithBraces(): List<Statement> {
+        if (!lexer.token.checkAndGoNext(Token.Special.Type.LBRACE)) {
+            errorHandler.handleParserError(InvalidFunctionDeclarationException(lexer.getCodePosition()))
+        }
+        val body = tryParseBlock()
+        if (!lexer.token.checkAndGoNext(Token.Special.Type.RBRACE)) {
+            errorHandler.handleParserError(InvalidFunctionDeclarationException(lexer.getCodePosition()))
+        }
+        return body
     }
 
     private fun tryParseType(): Type? {
@@ -469,5 +458,6 @@ class ParserImpl(
         Token.MultiplicativeOperator.Type.MODULO,
     )
 
-    private fun Token?.isAdditiveOperator() = this != null && this is Token.AdditiveOperator
+    private fun Token?.isAdditiveOperator() = this is Token.AdditiveOperator ||
+            this?.value == Token.UnaryOperator.Type.MINUS
 }

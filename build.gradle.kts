@@ -1,11 +1,8 @@
-import io.gitlab.arturbosch.detekt.Detekt
-
 @Suppress("DSL_SCOPE_VIOLATION")
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.kapt)
     alias(libs.plugins.kover)
-    alias(libs.plugins.detekt)
     alias(libs.plugins.shadowJar)
     id(libs.plugins.test.aggregation.get().pluginId)
     java
@@ -22,7 +19,6 @@ allprojects {
     apply(plugin = rootProject.libs.plugins.kotlin.jvm.get().pluginId)
     apply(plugin = rootProject.libs.plugins.kotlin.kapt.get().pluginId)
     apply(plugin = rootProject.libs.plugins.test.aggregation.get().pluginId)
-    apply(plugin = rootProject.libs.plugins.detekt.get().pluginId)
     repositories {
         mavenCentral()
     }
@@ -44,7 +40,7 @@ allprojects {
     }
 }
 application {
-    mainClass.set("org.example.interpreter.InterpreterKt")
+    mainClass.set("org.example.interpreter.ApplicationKt")
 }
 
 dependencies {
@@ -52,23 +48,10 @@ dependencies {
     implementation(project(":parser"))
     implementation(project(":interpreter"))
     implementation(project(":inputsource"))
-
     implementation(project(":errorhandler"))
-    detektPlugins(libs.detekt.formatting)
     testImplementation(libs.kotlin.test)
 }
 
 tasks.test {
     finalizedBy(tasks.named<TestReport>("testAggregateTestReport"))
-}
-
-detekt {
-    toolVersion = "1.22.0-RC3"
-    buildUponDefaultConfig = true
-}
-
-tasks.withType(Detekt::class) {
-    reports {
-        html.required.set(true)
-    }
 }

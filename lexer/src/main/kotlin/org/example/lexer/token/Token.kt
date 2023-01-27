@@ -1,4 +1,5 @@
 @file:Suppress("unused")
+
 package org.example.lexer.token
 
 import org.example.inputsource.CodePosition
@@ -33,8 +34,14 @@ sealed class Token(
     ) : Token(TokenType.IDENTIFIER, value, position)
 
     data class AdditiveOperator(
+        override val value: Type,
         override val position: CodePosition
-    ) : Token(TokenType.ADDITIVE_OPERATOR, "+", position)
+    ) : Token(TokenType.ADDITIVE_OPERATOR, value, position) {
+        enum class Type {
+            PLUS,
+            MINUS,
+        }
+    }
 
     data class MultiplicativeOperator(
         override val value: Type,

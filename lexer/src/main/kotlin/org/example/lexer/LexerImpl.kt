@@ -1,27 +1,27 @@
 package org.example.lexer
 
+import org.example.errorhandler.ErrorHandler
+import org.example.errorhandler.exception.lexer.CommentLengthOverflow
+import org.example.errorhandler.exception.lexer.DoublePrecisionOverflow
+import org.example.errorhandler.exception.lexer.IdentifierLengthOverflow
+import org.example.errorhandler.exception.lexer.InvalidIdentifier
+import org.example.errorhandler.exception.lexer.InvalidStringChar
+import org.example.errorhandler.exception.lexer.NumberOverflow
+import org.example.errorhandler.exception.lexer.StringLengthOverflow
+import org.example.errorhandler.exception.lexer.UnclosedQuoteString
+import org.example.errorhandler.exception.lexer.UnexpectedChar
 import org.example.inputsource.CodePosition
 import org.example.inputsource.EOF
 import org.example.inputsource.InputSource
-import org.example.lexer.exceptions.CommentLengthOverflow
-import org.example.lexer.exceptions.DoublePrecisionOverflow
-import org.example.lexer.exceptions.IdentifierLengthOverflow
-import org.example.lexer.exceptions.InvalidStringChar
-import org.example.lexer.exceptions.LexerException
-import org.example.lexer.exceptions.NumberOverflow
-import org.example.lexer.exceptions.StringLengthOverflow
-import org.example.lexer.exceptions.UnclosedQuoteString
-import org.example.lexer.exceptions.UnexpectedChar
-
 import org.example.lexer.token.Token
-import kotlin.math.pow
 import org.example.lexer.utils.isIdentifierChar
 import org.example.lexer.utils.isLogicalOperatorChar
 import org.example.lexer.utils.isSpecialChar
-import kotlin.jvm.Throws
+import kotlin.math.pow
 
 class LexerImpl(
     private val inputSource: InputSource,
+    override val errorHandler: ErrorHandler,
     override val config: LexerConfig = LexerConfig()
 ) : Lexer() {
 
@@ -51,19 +51,19 @@ class LexerImpl(
             return
         }
         val position = inputSource.getPosition()
-        throw UnexpectedChar(inputSource.currentChar, position)
+        errorHandler.handleLexerError(UnexpectedChar(position, inputSource.currentChar))
+        return
     }
 
     override fun getCodePosition(): CodePosition {
         return codePosition.copy()
     }
 
-    @Throws(Exception::class)
     fun getAllTokens(): List<Token> {
         val tokens = mutableListOf<Token>()
         while (token !is Token.EOF) {
             getNextToken()
-            tokens.add(token ?: throw Exception("Unexpected end of file"))
+            tokens.add(token!!)
         }
         return tokens
     }
@@ -74,8 +74,6 @@ class LexerImpl(
         }
     }
 
-    @Throws(CommentLengthOverflow::class)
-    // TODO Refactor this method to commentOrDivisi
     private fun tryBuildCommentOrDivision(): Boolean {
         if (inputSource.currentChar != '/') return false
 
@@ -86,7 +84,10 @@ class LexerImpl(
         val value = StringBuilder()
         while (inputSource.consumeCharacter() !in listOf('\n', EOF)) {
             if (value.length >= config.maxCommentLength) {
-                throw CommentLengthOverflow(codePosition, config.maxCommentLength)
+                errorHandler.handleLexerError(
+                    CommentLengthOverflow(codePosition, config.maxCommentLength)
+                )
+                break
             }
             value.append(inputSource.currentChar)
         }
@@ -94,7 +95,6 @@ class LexerImpl(
         return true
     }
 
-    @Throws(NumberOverflow::class)
     private fun tryBuildNumber(): Boolean {
         if (!inputSource.currentChar.isDigit()) {
             return false
@@ -104,7 +104,9 @@ class LexerImpl(
         if (inputSource.currentChar != '0') {
             while (inputSource.consumeCharacter().isDigit()) {
                 if ((config.maxIntegerValue - inputSource.currentChar.digitToInt()) / 10 < value) {
-                    throw NumberOverflow(codePosition, config.maxIntegerValue)
+                    errorHandler.handleLexerError(
+                        NumberOverflow(codePosition, config.maxIntegerValue)
+                    )
                 }
                 value = value * 10 + inputSource.currentChar.digitToInt()
             }
@@ -119,12 +121,15 @@ class LexerImpl(
         var fractionPartLength = 0
         while (inputSource.consumeCharacter().isDigit()) {
             if (fractionPartLength >= config.maxDoublePrecision) {
-                throw DoublePrecisionOverflow(codePosition, config.maxDoublePrecision)
+                errorHandler.handleLexerError(
+                    DoublePrecisionOverflow(codePosition, config.maxDoublePrecision)
+                )
             }
             fractionPart = fractionPart * 10 + inputSource.currentChar.digitToInt()
             fractionPartLength++
         }
-        token = Token.Literal(value + fractionPart / 10.0.pow(fractionPartLength), codePosition, Token.Literal.Type.DOUBLE)
+        token =
+            Token.Literal(value + fractionPart / 10.0.pow(fractionPartLength), codePosition, Token.Literal.Type.DOUBLE)
         return true
     }
 
@@ -137,22 +142,31 @@ class LexerImpl(
         val value = StringBuilder(inputSource.currentChar.toString())
         while (inputSource.consumeCharacter() == '_') {
             if (value.length >= config.maxIdentifierLength) {
-                throw IdentifierLengthOverflow(codePosition, config.maxIdentifierLength)
+                errorHandler.handleLexerError(
+                    IdentifierLengthOverflow(codePosition, config.maxIdentifierLength)
+                )
+                break
             }
             value.append(inputSource.currentChar)
         }
         if (!inputSource.currentChar.isLetterOrDigit()) {
-            if (value.last() == '_') {
-                throw LexerException("Invalid identifier", codePosition)
+            return if (value.last() == '_') {
+                errorHandler.handleLexerError(
+                    InvalidIdentifier(codePosition, value.toString())
+                )
+                true
             } else {
                 token = Token.Identifier(value.toString(), codePosition)
-                return true
+                true
             }
         }
         value.append(inputSource.currentChar)
         while (inputSource.consumeCharacter().isIdentifierChar()) {
             if (value.length >= config.maxIdentifierLength) {
-                throw IdentifierLengthOverflow(codePosition, config.maxIdentifierLength)
+                errorHandler.handleLexerError(
+                    IdentifierLengthOverflow(codePosition, config.maxIdentifierLength)
+                )
+                break
             }
             value.append(inputSource.currentChar)
         }
@@ -177,7 +191,6 @@ class LexerImpl(
         return true
     }
 
-    @Throws(StringLengthOverflow::class, InvalidStringChar::class)
     private fun tryBuildString(): Boolean {
         if (inputSource.currentChar != '"') {
             return false
@@ -185,9 +198,15 @@ class LexerImpl(
 
         val value = StringBuilder()
         while (inputSource.consumeCharacter() != '"') {
-            if (inputSource.currentChar in listOf('\n', EOF)) throw UnclosedQuoteString(codePosition)
+            if (inputSource.currentChar in listOf('\n', EOF)) {
+                errorHandler.handleLexerError(UnclosedQuoteString(codePosition))
+                break
+            }
             if (value.length >= config.maxStringLength) {
-                throw StringLengthOverflow(codePosition, config.maxStringLength)
+                errorHandler.handleLexerError(
+                    StringLengthOverflow(codePosition, config.maxStringLength)
+                )
+                break
             }
             val nextChar = inputSource.currentChar
             if (nextChar == '\\') {
@@ -203,29 +222,41 @@ class LexerImpl(
         return true
     }
 
-    @Throws(InvalidStringChar::class)
-    private fun tryBuildEscapeIdentifier(): Char {
+    private fun tryBuildEscapeIdentifier(): Char? {
         if (inputSource.currentChar != '\\') {
-            throw InvalidStringChar(inputSource.getPosition(), inputSource.currentChar)
+            errorHandler.handleLexerError(
+                InvalidStringChar(inputSource.getPosition(), inputSource.currentChar)
+            )
         }
         return when (inputSource.consumeCharacter()) {
             'n' -> '\n'
             't' -> '\t'
             'r' -> '\r'
             'b' -> '\b'
-            '\\' ->'\\'
+            '\\' -> '\\'
             '"' -> '"'
-            else -> throw InvalidStringChar(inputSource.getPosition(), inputSource.currentChar)
+            else -> {
+                errorHandler.handleLexerError(
+                    InvalidStringChar(inputSource.getPosition(), inputSource.currentChar)
+                )
+                null
+            }
         }
     }
 
     private fun tryBuildAdditiveOperator(): Boolean {
-        if (inputSource.currentChar != '+') {
+        if (inputSource.currentChar !in listOf('+', '-')) {
             return false
         }
 
+        token = Token.AdditiveOperator(
+            value = when (inputSource.currentChar) {
+                '+' -> Token.AdditiveOperator.Type.PLUS
+                else -> Token.AdditiveOperator.Type.MINUS
+            },
+            position = codePosition
+        )
         inputSource.consumeCharacter()
-        token = Token.AdditiveOperator(position = codePosition)
         return true
     }
 
@@ -305,8 +336,7 @@ class LexerImpl(
     private fun tryBuildComparisonOrAssignmentOperator(): Boolean {
 
         val operator = inputSource.currentChar
-        // TODO token = actions[operator]
-        token = when (operator) { // TODO add arrowTypeFunction
+        token = when (operator) {
             '=' -> {
                 inputSource.consumeCharacter()
                 if (inputSource.currentChar != '=') {
@@ -320,6 +350,7 @@ class LexerImpl(
                     )
                 }
             }
+
             '!' -> {
                 inputSource.consumeCharacter()
                 if (inputSource.currentChar != '=') {
@@ -333,6 +364,7 @@ class LexerImpl(
                     )
                 }
             }
+
             '<' -> {
                 inputSource.consumeCharacter()
 
@@ -350,6 +382,7 @@ class LexerImpl(
                     )
                 }
             }
+
             '>' -> {
                 inputSource.consumeCharacter()
                 if (inputSource.currentChar == '=') {
@@ -366,6 +399,7 @@ class LexerImpl(
                     )
                 }
             }
+
             else -> return false
         }
 

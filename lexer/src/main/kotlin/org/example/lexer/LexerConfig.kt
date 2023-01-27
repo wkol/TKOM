@@ -1,6 +1,6 @@
 package org.example.lexer
 
-data class LexerConfig (
+data class LexerConfig(
     val maxIdentifierLength: Int = DEFAULT_MAX_IDENTIFIER_LENGTH,
     val maxIntegerValue: Long = DEFAULT_MAX_INTEGER_VALUE,
     val maxDoublePrecision: Short = DEFAULT_MAX_DOUBLE_PRECISION,

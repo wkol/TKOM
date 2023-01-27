@@ -1,24 +1,27 @@
 package org.example.parser.org.parser
 
 import org.example.errorhandler.ErrorHandler
+import org.example.errorhandler.ErrorHandlerConfig
+import org.example.errorhandler.exception.interpreter.InterpreterException
+import org.example.errorhandler.exception.lexer.LexerException
+import org.example.errorhandler.exception.parser.DuplicateFunctionDeclarationException
+import org.example.errorhandler.exception.parser.InvalidTypeException
+import org.example.errorhandler.exception.parser.ParserException
+import org.example.errorhandler.exception.parser.UnmatchedParenthesisException
 import org.example.inputsource.InputSource
 import org.example.inputsource.InputSourceImpl
 import org.example.lexer.Lexer
 import org.example.lexer.LexerImpl
 import org.example.parser.Parser
 import org.example.parser.ParserImpl
+import org.example.parser.data.AdditiveOperator
+import org.example.parser.data.AdditiveOperatorWithExpression
 import org.example.parser.data.Expression
-import org.example.parser.data.OperatorWithExpression
+import org.example.parser.data.MultiplicativeOperator
+import org.example.parser.data.MultiplicativeOperatorWithExpression
 import org.example.parser.data.Statement
-import org.example.parser.data.Operator
 import org.example.parser.data.Type
-import org.example.parser.exception.DuplicateFunctionDeclarationException
-import org.example.parser.exception.InvalidExpressionException
-import org.example.parser.exception.InvalidTypeException
-import org.example.parser.exception.ParserException
-import org.example.parser.exception.UnmatchedParenthesisException
 import org.junit.jupiter.api.Test
-import java.lang.Exception
 import kotlin.test.assertEquals
 
 class IntegrationTest {
@@ -31,16 +34,26 @@ class IntegrationTest {
 
     private fun setUpLexer(input: String) {
         inputSource = InputSourceImpl.fromString(input)
-        lexer = LexerImpl(inputSource)
         errors.clear()
         errorHandler = object : ErrorHandler {
-            override fun handleParserError(exception: Exception) {
-                errors.add(exception as ParserException)
+            override var errorCount: Int = 0
+
+            override val errorHandlerConfig: ErrorHandlerConfig
+                get() = ErrorHandlerConfig()
+
+            override fun handleInterpreterError(exception: InterpreterException) {
+
             }
 
-            override fun handleLexerError(exception: Exception) {
+            override fun handleParserError(exception: ParserException) {
+                errors.add(exception)
+                errorCount++
+            }
+
+            override fun handleLexerError(exception: LexerException) {
             }
         }
+        lexer = LexerImpl(inputSource, errorHandler)
         parser = ParserImpl(lexer, errorHandler)
     }
 
@@ -67,7 +80,7 @@ class IntegrationTest {
                     } else {
                         print("The input is not a number")
                     }
-                    i = i + 1 // incrementing i
+                    i = i - 1 // incrementing i
                 }
                 printText(i as string)
             }
@@ -86,7 +99,6 @@ class IntegrationTest {
     fun multipleParenthesisTest() {
         val input = """
             var int i = (1.0 * ((0 + 1) * (2 + 3) as double) / 4) as int
-            
         """.trimIndent()
         setUpLexer(input)
         val program = parser.parse()
@@ -105,73 +117,64 @@ class IntegrationTest {
                 initialValue = Expression.AsExpression(
                     type = Type(
                         type = Type.TypePrimitive.INT,
-                        isNullable = false
+                        isNullable = false,
                     ),
-                    left = Expression.SimpleExpression.ParenthesizedExpression(
-                        expression = Expression.MultiplicativeExpression(
-                            left = Expression.SimpleExpression.Literal(
-                                value = 1.0,
-                            ),
-                            right = listOf(
-                                OperatorWithExpression(
-                                    operator = Operator.Mul,
-                                    expression = Expression.SimpleExpression.ParenthesizedExpression(
-                                        expression = Expression.MultiplicativeExpression(
-                                            left = Expression.SimpleExpression.ParenthesizedExpression(
-                                                expression = Expression.AdditiveExpression(
-                                                    left = Expression.SimpleExpression.Literal(
-                                                        value = 0,
-                                                    ),
-                                                    right = listOf(
-                                                        OperatorWithExpression(
-                                                            operator = Operator.Plus,
-                                                            expression = Expression.SimpleExpression.Literal(
-                                                                value = 1,
-                                                            )
-                                                        )
-                                                    )
+                    left = Expression.MultiplicativeExpression(
+                        left = Expression.SimpleExpression.Literal(
+                            value = 1.0,
+                        ),
+                        right = listOf(
+                            MultiplicativeOperatorWithExpression(
+                                operator = MultiplicativeOperator.Mul,
+                                expression = Expression.MultiplicativeExpression(
+                                    left = Expression.AdditiveExpression(
+                                        left = Expression.SimpleExpression.Literal(
+                                            value = 0,
+                                        ),
+                                        right = listOf(
+                                            AdditiveOperatorWithExpression(
+                                                operator = AdditiveOperator.Plus,
+                                                expression = Expression.SimpleExpression.Literal(
+                                                    value = 1,
                                                 ),
                                             ),
-                                            right = listOf(
-                                                OperatorWithExpression(
-                                                    operator = Operator.Mul,
-                                                    expression = Expression.AsExpression(
-                                                        left = Expression.SimpleExpression.ParenthesizedExpression(
-                                                            expression = Expression.AdditiveExpression(
-                                                                left = Expression.SimpleExpression.Literal(
-                                                                    value = 2,
-                                                                ),
-                                                                right = listOf(
-                                                                    OperatorWithExpression(
-                                                                        operator = Operator.Plus,
-                                                                        expression = Expression.SimpleExpression.Literal(
-                                                                            value = 3,
-                                                                        )
-                                                                    )
-                                                                )
+                                        ),
+                                    ),
+                                    right = listOf(
+                                        MultiplicativeOperatorWithExpression(
+                                            operator = MultiplicativeOperator.Mul,
+                                            expression = Expression.AsExpression(
+                                                left = Expression.AdditiveExpression(
+                                                    left = Expression.SimpleExpression.Literal(
+                                                        value = 2,
+                                                    ),
+                                                    right = listOf(
+                                                        AdditiveOperatorWithExpression(
+                                                            operator = AdditiveOperator.Plus,
+                                                            expression = Expression.SimpleExpression.Literal(
+                                                                value = 3,
                                                             )
                                                         ),
-                                                        type = Type(
-                                                            type = Type.TypePrimitive.DOUBLE,
-                                                            isNullable = false
-                                                        )
-                                                    )
-                                                )
+                                                    ),
+                                                ),
+                                                type = Type(
+                                                    type = Type.TypePrimitive.DOUBLE,
+                                                    isNullable = false
+                                                ),
                                             )
                                         )
-                                    )
-                                ),
-                                OperatorWithExpression(
-                                    operator = Operator.Div,
-                                    expression = Expression.SimpleExpression.Literal(
-                                        value = 4
-                                    )
+                                    ),
+                                )
+                            ),
+                            MultiplicativeOperatorWithExpression(
+                                operator = MultiplicativeOperator.Div,
+                                expression = Expression.SimpleExpression.Literal(
+                                    value = 4,
                                 )
                             )
-                        )
-                    )
-                )
-
+                        ),
+                    ),
+                ),
             ), program.statements[0]
         )
     }
@@ -195,9 +198,9 @@ class IntegrationTest {
         assertEquals(
             Statement.ExpressionStatement(
                 expression = Expression.SimpleExpression.FunctionCall(
-                    functionName = "main",
-                    functionArgs = listOf()
-                )
+                    identifier = "main",
+                    args = listOf(),
+                ),
             ), program.statements[0]
         )
     }
@@ -208,8 +211,9 @@ class IntegrationTest {
             var float i = 1.0
         """.trimIndent()
 
+
         setUpLexer(input)
-        val program = parser.parse()
+        parser.parse()
 
         assertEquals(1, errors.size)
         assert(errors[0] is InvalidTypeException)
@@ -218,15 +222,14 @@ class IntegrationTest {
     @Test
     fun invalidExpressionTest() {
         val input = """
-            var int i = (
+            var int i = (2.0 + 3.0 
         """.trimIndent()
 
         setUpLexer(input)
-        val program = parser.parse()
+        parser.parse()
 
-        assertEquals(2, errors.size)
-        assert(errors[0] is InvalidExpressionException)
-        assert(errors[1] is UnmatchedParenthesisException)
+        assertEquals(1, errors.size)
+        assert(errors[0] is UnmatchedParenthesisException)
     }
 
     @Test
@@ -245,9 +248,10 @@ class IntegrationTest {
 
         setUpLexer(input)
 
-        val program = parser.parse()
+        parser.parse()
 
         assertEquals(1, errors.size)
         assert(errors[0] is DuplicateFunctionDeclarationException)
     }
+
 }

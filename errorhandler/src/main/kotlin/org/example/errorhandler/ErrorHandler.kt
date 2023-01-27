@@ -1,8 +1,14 @@
 package org.example.errorhandler
 
-import java.lang.Exception
+import org.example.errorhandler.exception.interpreter.InterpreterException
+import org.example.errorhandler.exception.lexer.LexerException
+import org.example.errorhandler.exception.parser.ParserException
 
 interface ErrorHandler {
-    fun handleParserError(exception: Exception)
-    fun handleLexerError(exception: Exception)
+    var errorCount: Int
+    val errorHandlerConfig: ErrorHandlerConfig
+
+    fun handleParserError(exception: ParserException)
+    fun handleLexerError(exception: LexerException)
+    fun handleInterpreterError(exception: InterpreterException)
 }

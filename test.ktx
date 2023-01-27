@@ -1,0 +1,40 @@
+fun average(double a, double b) -> double {
+    return (a + b) / 2.0
+}
+
+fun printText(string text) {
+    print("Exiting program with i = " + text )
+}
+
+fun a() -> int {
+    return 1
+}
+
+fun b() {
+    print("b")
+}
+
+
+fun main() {
+    var int i = 3
+    const double c = 2.0
+    var bool loopCond = true
+    while(loopCond) {
+        print("Type a number")
+        const string input = readInput() ?: "0"
+        if (isNumber(input)) {
+            const double number = input as double
+            print("The average of 2 and " + number as string + " is " + average(c, number as double) as string)
+        } else {
+            print("The input is not a number")
+        }
+        i = i - 1 // incrementing i
+        if (i < 0) {
+            loopCond = false
+        }
+    }
+    printText(i as string)
+}
+
+main()
+
