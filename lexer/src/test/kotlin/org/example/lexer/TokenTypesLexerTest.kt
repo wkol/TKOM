@@ -1,27 +1,51 @@
 package org.example.lexer
 
 
+import org.example.errorhandler.ErrorHandler
+import org.example.errorhandler.ErrorHandlerConfig
+import org.example.errorhandler.exception.interpreter.InterpreterException
+import org.example.errorhandler.exception.lexer.CommentLengthOverflow
+import org.example.errorhandler.exception.lexer.DoublePrecisionOverflow
+import org.example.errorhandler.exception.lexer.IdentifierLengthOverflow
+import org.example.errorhandler.exception.lexer.InvalidStringChar
+import org.example.errorhandler.exception.lexer.LexerException
+import org.example.errorhandler.exception.lexer.NumberOverflow
+import org.example.errorhandler.exception.lexer.StringLengthOverflow
+import org.example.errorhandler.exception.lexer.UnclosedQuoteString
+import org.example.errorhandler.exception.lexer.UnexpectedChar
+import org.example.errorhandler.exception.parser.ParserException
 import org.example.inputsource.InputSourceImpl
-import org.example.lexer.exceptions.CommentLengthOverflow
-import org.example.lexer.exceptions.DoublePrecisionOverflow
-import org.example.lexer.exceptions.IdentifierLengthOverflow
-import org.example.lexer.exceptions.InvalidStringChar
-import org.example.lexer.exceptions.LexerException
-import org.example.lexer.exceptions.NumberOverflow
-import org.example.lexer.exceptions.UnclosedQuoteString
-import org.example.lexer.exceptions.UnexpectedChar
 import org.example.lexer.token.Token
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.assertThrows
 import kotlin.test.assertEquals
 
 class TokenTypesLexerTest {
+
+    private val errors = mutableListOf<LexerException>()
+
+    private val errorHandler = object : ErrorHandler {
+        override var errorCount: Int
+            get() = errors.size
+            set(_) {}
+        override val errorHandlerConfig: ErrorHandlerConfig = ErrorHandlerConfig()
+
+        override fun handleParserError(exception: ParserException) {
+        }
+
+        override fun handleLexerError(exception: LexerException) {
+            errors.add(exception)
+            errorCount++
+        }
+
+        override fun handleInterpreterError(exception: InterpreterException) {
+        }
+    }
 
     @Test
     fun `EOF token`() {
         val string = "     "
         val inputSource = InputSourceImpl.fromString(string)
-        val lexer = LexerImpl(inputSource, LexerConfig())
+        val lexer = LexerImpl(inputSource, errorHandler, LexerConfig())
         lexer.getNextToken()
         assert(lexer.token is Token.EOF)
     }
@@ -31,7 +55,7 @@ class TokenTypesLexerTest {
         val string = "123 0"
 
         val inputSource = InputSourceImpl.fromString(string)
-        val lexer = LexerImpl(inputSource, LexerConfig())
+        val lexer = LexerImpl(inputSource, errorHandler, LexerConfig())
         lexer.getNextToken()
         assert(lexer.token is Token.Literal)
         assertEquals(lexer.token?.value, 123)
@@ -47,8 +71,10 @@ class TokenTypesLexerTest {
         val string = "\n 123"
 
         val inputSource = InputSourceImpl.fromString(string)
-        val lexer = LexerImpl(inputSource, LexerConfig(maxIntegerValue = 100))
-        assertThrows<NumberOverflow>("Number overflow at position Line: 1 Column: 1 Max value is 100") { lexer.getNextToken() }
+        val lexer = LexerImpl(inputSource, errorHandler, LexerConfig(maxIntegerValue = 100))
+        lexer.getNextToken()
+        assertEquals(1, errorHandler.errorCount)
+        assert(errors[0] is NumberOverflow)
     }
 
     @Test
@@ -56,7 +82,7 @@ class TokenTypesLexerTest {
         val string = "123.456 0.0"
 
         val inputSource = InputSourceImpl.fromString(string)
-        val lexer = LexerImpl(inputSource, LexerConfig())
+        val lexer = LexerImpl(inputSource, errorHandler, LexerConfig())
         lexer.getNextToken()
         assert(lexer.token is Token.Literal)
         assertEquals(lexer.token?.value, 123.456)
@@ -72,8 +98,10 @@ class TokenTypesLexerTest {
         val string = "123.456"
 
         val inputSource = InputSourceImpl.fromString(string)
-        val lexer = LexerImpl(inputSource, LexerConfig(maxDoublePrecision = 2))
-        assertThrows<DoublePrecisionOverflow>("Double precision overflow at position Line: 1 Column: 1 Max double precision is 2") { lexer.getNextToken() }
+        val lexer = LexerImpl(inputSource, errorHandler, LexerConfig(maxDoublePrecision = 2))
+        lexer.getNextToken()
+        assertEquals(1, errorHandler.errorCount)
+        assert(errors[0] is DoublePrecisionOverflow)
     }
 
     @Test
@@ -88,7 +116,7 @@ class TokenTypesLexerTest {
         val results = string.split("\n").map { it.trim() }
 
         val inputSource = InputSourceImpl.fromString(string)
-        val lexer = LexerImpl(inputSource, LexerConfig())
+        val lexer = LexerImpl(inputSource, errorHandler, LexerConfig())
         for (result in results) {
             lexer.getNextToken()
             assert(lexer.token is Token.Identifier)
@@ -102,8 +130,10 @@ class TokenTypesLexerTest {
         val string = "_aaaaaaaa"
 
         val inputSource = InputSourceImpl.fromString(string)
-        val lexer = LexerImpl(inputSource, LexerConfig(maxIdentifierLength = 5))
-        assertThrows<IdentifierLengthOverflow>("Identifier length overflow at position Line: 1 Column: 1 Maximum length is 5") { lexer.getNextToken() }
+        val lexer = LexerImpl(inputSource, errorHandler, LexerConfig(maxIdentifierLength = 5))
+        lexer.getNextToken()
+        assertEquals(1, errorHandler.errorCount)
+        assert(errors[0] is IdentifierLengthOverflow)
     }
 
     @Test
@@ -111,7 +141,7 @@ class TokenTypesLexerTest {
         val string = "\"Hello world\""
 
         val inputSource = InputSourceImpl.fromString(string)
-        val lexer = LexerImpl(inputSource, LexerConfig())
+        val lexer = LexerImpl(inputSource, errorHandler, LexerConfig())
         lexer.getNextToken()
         assert(lexer.token is Token.Literal)
         assertEquals("Hello world", lexer.token?.value)
@@ -123,8 +153,10 @@ class TokenTypesLexerTest {
         val string = "\"Hello world\""
 
         val inputSource = InputSourceImpl.fromString(string)
-        val lexer = LexerImpl(inputSource, LexerConfig(maxStringLength = 5))
-        assertThrows<LexerException>("String length overflow at position Line: 1 Column: 1. Max length is 5") { lexer.getNextToken() }
+        val lexer = LexerImpl(inputSource, errorHandler, LexerConfig(maxStringLength = 5))
+        lexer.getNextToken()
+        assertEquals(1, errorHandler.errorCount)
+        assert(errors[0] is StringLengthOverflow)
     }
 
     @Test
@@ -132,7 +164,7 @@ class TokenTypesLexerTest {
         val string = """ "Hello \t world" """
 
         val inputSource = InputSourceImpl.fromString(string)
-        val lexer = LexerImpl(inputSource, LexerConfig())
+        val lexer = LexerImpl(inputSource, errorHandler, LexerConfig())
         lexer.getNextToken()
         assert(lexer.token is Token.Literal)
         assertEquals(lexer.token?.value, "Hello \t world")
@@ -144,8 +176,10 @@ class TokenTypesLexerTest {
         val string = """ "Hello \x world" """
 
         val inputSource = InputSourceImpl.fromString(string)
-        val lexer = LexerImpl(inputSource, LexerConfig())
-        assertThrows<InvalidStringChar>("Invalid string char at position Line: 1 Column: 8 Char: x") { lexer.getNextToken() }
+        val lexer = LexerImpl(inputSource, errorHandler, LexerConfig())
+        lexer.getNextToken()
+        assertEquals(1, errorHandler.errorCount)
+        assert(errors[0] is InvalidStringChar)
     }
 
     @Test
@@ -153,8 +187,10 @@ class TokenTypesLexerTest {
         val string = """ "Hello world """
 
         val inputSource = InputSourceImpl.fromString(string)
-        val lexer = LexerImpl(inputSource, LexerConfig())
-        assertThrows<UnclosedQuoteString>("Unclosed quote string at position Line: 1 Column: 1") { lexer.getNextToken() }
+        val lexer = LexerImpl(inputSource, errorHandler, LexerConfig())
+        lexer.getNextToken()
+        assertEquals(1, errorHandler.errorCount)
+        assert(errors[0] is UnclosedQuoteString)
     }
 
     @Test
@@ -162,7 +198,7 @@ class TokenTypesLexerTest {
         val string = "null"
 
         val inputSource = InputSourceImpl.fromString(string)
-        val lexer = LexerImpl(inputSource, LexerConfig())
+        val lexer = LexerImpl(inputSource, errorHandler, LexerConfig())
         lexer.getNextToken()
         assert(lexer.token is Token.Literal)
         assertEquals(lexer.token?.value, null)
@@ -174,7 +210,7 @@ class TokenTypesLexerTest {
         val string = "?:"
 
         val inputSource = InputSourceImpl.fromString(string)
-        val lexer = LexerImpl(inputSource, LexerConfig())
+        val lexer = LexerImpl(inputSource, errorHandler, LexerConfig())
         lexer.getNextToken()
         assert(lexer.token is Token.NullSafetyOperator)
     }
@@ -184,10 +220,10 @@ class TokenTypesLexerTest {
         val string = "+"
 
         val inputSource = InputSourceImpl.fromString(string)
-        val lexer = LexerImpl(inputSource, LexerConfig())
+        val lexer = LexerImpl(inputSource, errorHandler, LexerConfig())
         lexer.getNextToken()
         assert(lexer.token is Token.AdditiveOperator)
-        assertEquals(lexer.token?.value, "+")
+        assertEquals(lexer.token?.value, Token.AdditiveOperator.Type.PLUS)
     }
 
     @Test
@@ -195,7 +231,7 @@ class TokenTypesLexerTest {
         val string = "* / %"
 
         val inputSource = InputSourceImpl.fromString(string)
-        val lexer = LexerImpl(inputSource, LexerConfig())
+        val lexer = LexerImpl(inputSource, errorHandler, LexerConfig())
         lexer.getNextToken()
         assert(lexer.token is Token.MultiplicativeOperator)
         assertEquals(
@@ -214,7 +250,7 @@ class TokenTypesLexerTest {
         val string = "== != > < >= <="
 
         val inputSource = InputSourceImpl.fromString(string)
-        val lexer = LexerImpl(inputSource, LexerConfig())
+        val lexer = LexerImpl(inputSource, errorHandler, LexerConfig())
         lexer.getNextToken()
         assert(lexer.token is Token.ComparisonOperator)
         assertEquals(lexer.token?.value, Token.ComparisonOperator.Type.EQUAL)
@@ -242,7 +278,7 @@ class TokenTypesLexerTest {
         val string = "? , () {} ="
 
         val inputSource = InputSourceImpl.fromString(string)
-        val lexer = LexerImpl(inputSource, LexerConfig())
+        val lexer = LexerImpl(inputSource, errorHandler, LexerConfig())
         lexer.getNextToken()
         assert(lexer.token is Token.Special)
         assertEquals(lexer.token?.value, Token.Special.Type.QUESTION_MARK)
@@ -271,7 +307,7 @@ class TokenTypesLexerTest {
         val string = "&&"
 
         val inputSource = InputSourceImpl.fromString(string)
-        val lexer = LexerImpl(inputSource, LexerConfig())
+        val lexer = LexerImpl(inputSource, errorHandler, LexerConfig())
         lexer.getNextToken()
         assert(lexer.token is Token.Conjunction)
     }
@@ -281,7 +317,7 @@ class TokenTypesLexerTest {
         val string = "||"
 
         val inputSource = InputSourceImpl.fromString(string)
-        val lexer = LexerImpl(inputSource, LexerConfig())
+        val lexer = LexerImpl(inputSource, errorHandler, LexerConfig())
         lexer.getNextToken()
         assert(lexer.token is Token.Disjunction)
     }
@@ -291,7 +327,7 @@ class TokenTypesLexerTest {
         val string = "! -"
 
         val inputSource = InputSourceImpl.fromString(string)
-        val lexer = LexerImpl(inputSource, LexerConfig())
+        val lexer = LexerImpl(inputSource, errorHandler, LexerConfig())
         lexer.getNextToken()
         assert(lexer.token is Token.UnaryOperator)
         assertEquals(lexer.token?.value, Token.UnaryOperator.Type.NOT)
@@ -305,7 +341,7 @@ class TokenTypesLexerTest {
         val string = "as"
 
         val inputSource = InputSourceImpl.fromString(string)
-        val lexer = LexerImpl(inputSource, LexerConfig())
+        val lexer = LexerImpl(inputSource, errorHandler, LexerConfig())
         lexer.getNextToken()
         assertEquals(lexer.token?.value, Token.Keyword.Type.AS)
     }
@@ -315,7 +351,7 @@ class TokenTypesLexerTest {
         val string = "if else while return fun var const bool int double string true false"
 
         val inputSource = InputSourceImpl.fromString(string)
-        val lexer = LexerImpl(inputSource, LexerConfig())
+        val lexer = LexerImpl(inputSource, errorHandler, LexerConfig())
         lexer.getNextToken()
         assert(lexer.token is Token.Keyword)
         assertEquals(lexer.token?.value, Token.Keyword.Type.IF)
@@ -363,7 +399,7 @@ class TokenTypesLexerTest {
         val string = "->"
 
         val inputSource = InputSourceImpl.fromString(string)
-        val lexer = LexerImpl(inputSource, LexerConfig())
+        val lexer = LexerImpl(inputSource, errorHandler, LexerConfig())
         lexer.getNextToken()
         assert(lexer.token is Token.FunReturnTypeArrow)
     }
@@ -373,7 +409,7 @@ class TokenTypesLexerTest {
         val string = "// comment"
 
         val inputSource = InputSourceImpl.fromString(string)
-        val lexer = LexerImpl(inputSource, LexerConfig())
+        val lexer = LexerImpl(inputSource, errorHandler, LexerConfig())
         lexer.getNextToken()
         assert(lexer.token is Token.Comment)
         assertEquals(" comment", lexer.token?.value)
@@ -384,8 +420,10 @@ class TokenTypesLexerTest {
         val string = "// aaaaaaaa"
 
         val inputSource = InputSourceImpl.fromString(string)
-        val lexer = LexerImpl(inputSource, LexerConfig(maxCommentLength = 5))
-        assertThrows<CommentLengthOverflow>("Comment length overflow at position Line: 1 Column: 1 Max comment length is 5") { lexer.getNextToken() }
+        val lexer = LexerImpl(inputSource, errorHandler, LexerConfig(maxCommentLength = 5))
+        lexer.getNextToken()
+        assertEquals(1, errorHandler.errorCount)
+        assert(errors[0] is CommentLengthOverflow)
     }
 
     @Test
@@ -393,7 +431,9 @@ class TokenTypesLexerTest {
         val string = "  #"
 
         val inputSource = InputSourceImpl.fromString(string)
-        val lexer = LexerImpl(inputSource, LexerConfig())
-        assertThrows<UnexpectedChar>("Unexpected character at position Line: 1 Column: 3") { lexer.getNextToken() }
+        val lexer = LexerImpl(inputSource, errorHandler, LexerConfig())
+        lexer.getNextToken()
+        assertEquals(1, errorHandler.errorCount)
+        assert(errors[0] is UnexpectedChar)
     }
 }

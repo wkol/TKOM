@@ -222,7 +222,8 @@ class Expected private constructor(
                         column = 13,
                         line = 2,
                         offset = 48,
-                    )
+                    ),
+                    value = Token.AdditiveOperator.Type.PLUS
                 ),
                 Token.Identifier(
                     value = "d",

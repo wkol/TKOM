@@ -5,7 +5,6 @@ import java.io.FileReader
 import java.io.StringReader
 
 class InputSourceImpl private constructor(private val source: BufferedReader) : InputSource {
-    // TODO add support for multiplatform newlines (CR, LF, CRLF, 155, 25)
     private var codePosition: CodePosition = CodePosition(0, 1, -1)
 
     init {
@@ -16,15 +15,15 @@ class InputSourceImpl private constructor(private val source: BufferedReader) : 
 
     override fun getPosition() = codePosition
 
-    override fun consumeCharacter(): Char {
+    override fun consumeCharacter(): Char = try {
         val readValue = source.read()
 
         currentChar = when (readValue) {
-            -1 -> {
+            ERROR -> {
                 codePosition = codePosition.handleNextChar()
                 EOF
             }
-            10 -> {
+            NEWLINE -> {
                 codePosition = codePosition.handleNewLine()
                 '\n'
             }
@@ -33,10 +32,17 @@ class InputSourceImpl private constructor(private val source: BufferedReader) : 
                 readValue.toChar()
             }
         }
-        return currentChar
+        currentChar
+    } catch (e: Exception) {
+        currentChar = EOF
+        EOF
     }
 
     companion object {
+
+        const val NEWLINE = 10
+        const val ERROR = -1
+
         fun fromSource(source: BufferedReader): InputSource {
             return InputSourceImpl(source)
         }

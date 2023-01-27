@@ -6,4 +6,6 @@ dependencies {
     testImplementation(libs.kotlin.test)
     implementation(project(":lexer"))
     implementation(project(":parser"))
+    implementation(project(":inputsource"))
+    implementation(project(":errorhandler"))
 }

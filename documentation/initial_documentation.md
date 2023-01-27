@@ -86,9 +86,9 @@ fun main() {
     while(i < 3) {
         print("Type a number")
         const string input = readInput() ?: "0"
-        if (isNumber(input) && input as int > 0) {
-            const double number = input as double
-            print("The average of 2 and " + number + " is " + average(c, number))
+        if (input as int > 0) {
+            const double number = input 
+            print("The average of 2 and " + number as string + " is " + average(c, number) as string)
         } else {
             print("The input is not a number")
         }
@@ -112,8 +112,11 @@ main()
     [OUT]: The average of 2 and 4.0 is 3.0
            Exiting program with i = 3
 ```
+
 ### Gramatyka języka
+
 Gramatyka języka zapisana w notacji EBNF znajduję się w pliku [grammar.ebnf](grammar.ebnf)
+
 ### Analiza wymagań
 
 * z racji, że język jest silnie, statycznie typowany, należy zaimplementować analizę statyczną typów
@@ -129,7 +132,7 @@ Gramatyka języka zapisana w notacji EBNF znajduję się w pliku [grammar.ebnf](
 * z racji, że pozwalamy na funkcję niezwracające wartości, należy sprawdzać czy wywołanie takiej funkcji nie jest użyte
   jako wyrażenie (np. w instrukcji warunkowej lub w wyrażeniu przypisania) i zgłaszać wtedy błąd.
 * należy sprawdzać w miejscach używania zmiennych czy są one dostępne w tym miejscu
-// TODO dodać drzewo składniowe oraz pozostałe wymagania
+
 ### Uruchomienie interpretera:
 
 Przed uruchomieniem interpretera należy wygenerować plik jar za pomocą polecenia `./gradlew shadowJar`.
@@ -161,10 +164,13 @@ np. `java -jar build/libs/interpreter-all.jar ./test.ktx`).
 Interpreter w przypadku napotkania błędu powinien wypisać na standardowe wyjście błąd
 wraz z jego opisem oraz kodem powodującym błąd. Następnie interpreter powinien poinformować użytkownika o kończeniu
 działania i zakończyć się. Błędy napotkane podczas interpretowania kodu mają następujące postać:
+
 ```
 <Typ błędu> <Opis błędu> <Miejsce wystąpienia błędu>
 ```
+
 Np.:
+
 ```
 ZeroDivisionError: Division by zero is forbidden. "return a / 0" at line 1, column 11
 ```

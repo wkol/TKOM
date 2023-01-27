@@ -1,17 +1,20 @@
 package org.example.parser.org.parser
 
-import org.example.lexer.token.Token
+import org.example.errorhandler.ErrorHandler
+import org.example.errorhandler.ErrorHandlerConfig
+import org.example.errorhandler.exception.interpreter.InterpreterException
+import org.example.errorhandler.exception.lexer.LexerException
+import org.example.errorhandler.exception.parser.ParserException
+import org.example.inputsource.CodePosition
 import org.example.lexer.Lexer
 import org.example.lexer.LexerConfig
-import org.example.errorhandler.ErrorHandler
-import org.example.inputsource.CodePosition
+import org.example.lexer.token.Token
 import org.example.parser.ParserImpl
 import org.example.parser.data.Expression
-import org.example.parser.data.Operator
 import org.example.parser.data.Statement
 import org.example.parser.data.Type
+import org.example.parser.data.UnaryOperator
 import org.junit.jupiter.api.Test
-import java.lang.Exception
 import kotlin.test.assertEquals
 
 class ParserTest {
@@ -23,7 +26,7 @@ class ParserTest {
 
     private fun setUpParser(tokens: List<Token>) {
         errors = 0
-        lexer = TestLexerMock(tokens.toMutableList())
+        lexer = TestLexerMock(tokens.toMutableList(), testHandler)
         parser = ParserImpl(lexer, testHandler)
     }
 
@@ -60,8 +63,8 @@ class ParserTest {
                     type = Type(
                         type = Type.TypePrimitive.INT,
                         isNullable = false
-                    )
-                )
+                    ),
+                ),
             ),
             parserResult
         )
@@ -96,21 +99,23 @@ class ParserTest {
             )
         )
         setUpParser(tokens)
-        val parserResult = parser.tryParseAssignmentStatement()
+        val parserResult = parser.tryParseExpressionStatement()
 
         assertEquals(0, errors)
         assertEquals(
-            Statement.AssignmentStatement(
-                variable = "a",
-                expression = Expression.AsExpression(
+            Statement.ExpressionStatement(
+                expression = Expression.SimpleExpression.Identifier(
+                    identifier = "a",
+                ),
+                assignedExpression = Expression.AsExpression(
                     left = Expression.SimpleExpression.Identifier(
                         identifier = "b",
                     ),
                     type = Type(
                         type = Type.TypePrimitive.INT,
                         isNullable = true
-                    )
-                )
+                    ),
+                ),
             ),
             parserResult
         )
@@ -155,17 +160,18 @@ class ParserTest {
         assertEquals(
             Statement.IfStatement(
                 condition = Expression.SimpleExpression.Identifier(
-                    identifier = "a"
+                    identifier = "a",
                 ),
                 body = listOf(
                     Statement.ExpressionStatement(
                         expression = Expression.SimpleExpression.Identifier(
-                            identifier = "b"
-                        )
+                            identifier = "b",
+                        ),
                     )
                 ),
-                elseBody = null
-            ),
+                elseBody = null,
+
+                ),
             parserResult
         )
     }
@@ -225,22 +231,22 @@ class ParserTest {
         assertEquals(
             Statement.IfStatement(
                 condition = Expression.SimpleExpression.Identifier(
-                    identifier = "a"
+                    identifier = "a",
                 ),
                 body = listOf(
                     Statement.ExpressionStatement(
                         expression = Expression.SimpleExpression.Identifier(
-                            identifier = "b"
-                        )
+                            identifier = "b",
+                        ),
                     )
                 ),
                 elseBody = listOf(
                     Statement.ExpressionStatement(
                         expression = Expression.SimpleExpression.Identifier(
-                            identifier = "c"
-                        )
-                    )
-                )
+                            identifier = "c",
+                        ),
+                    ),
+                ),
             ),
             parserResult
         )
@@ -285,15 +291,15 @@ class ParserTest {
         assertEquals(
             Statement.WhileStatement(
                 condition = Expression.SimpleExpression.Identifier(
-                    identifier = "a"
+                    identifier = "a",
                 ),
                 body = listOf(
                     Statement.ExpressionStatement(
                         expression = Expression.SimpleExpression.Identifier(
-                            identifier = "b"
-                        )
-                    )
-                )
+                            identifier = "b",
+                        ),
+                    ),
+                ),
             ),
             parserResult
         )
@@ -337,8 +343,8 @@ class ParserTest {
                 isImmutable = false,
                 name = "_a",
                 initialValue = Expression.SimpleExpression.Literal(
-                    value = 1
-                )
+                    value = 1,
+                ),
             ),
             parserResult
         )
@@ -391,13 +397,13 @@ class ParserTest {
                 name = "_a",
                 initialValue = Expression.AsExpression(
                     left = Expression.SimpleExpression.Literal(
-                        value = 12.00
+                        value = 12.00,
                     ),
                     type = Type(
                         type = Type.TypePrimitive.INT,
                         isNullable = false
-                    )
-                )
+                    ),
+                ),
             ),
             parserResult
         )
@@ -431,7 +437,7 @@ class ParserTest {
                 CodePosition(0, 0, 0)
             ),
         )
-        val parser = ParserImpl(TestLexerMock(tokens.toMutableList()), testHandler)
+        val parser = ParserImpl(TestLexerMock(tokens.toMutableList(), testHandler), testHandler)
         val parserResult = parser.tryParseFunctionParams()
 
         assertEquals(2, parserResult.size)
@@ -449,7 +455,7 @@ class ParserTest {
                 CodePosition(0, 0, 0)
             ),
         )
-        val parser = ParserImpl(TestLexerMock(tokens.toMutableList()), testHandler)
+        val parser = ParserImpl(TestLexerMock(tokens.toMutableList(), testHandler), testHandler)
         val parserResult = parser.tryParseFunctionParams()
 
         assertEquals(0, parserResult.size)
@@ -492,7 +498,7 @@ class ParserTest {
             ),
         )
 
-        val parser = ParserImpl(TestLexerMock(tokens.toMutableList()), testHandler)
+        val parser = ParserImpl(TestLexerMock(tokens.toMutableList(), testHandler), testHandler)
         val parserResult = mutableListOf<Type?>().apply {
             add(parser.tryParseFunctionReturnType())
             parser.lexer.getNextToken()
@@ -576,12 +582,12 @@ class ParserTest {
             ),
         )
 
-        val parser = ParserImpl(TestLexerMock(tokens.toMutableList()), testHandler)
+        val parser = ParserImpl(TestLexerMock(tokens.toMutableList(), testHandler), testHandler)
         val parserOutCome = parser.parse()
         val parserResult = parserOutCome.functions["funName"]!!
 
         assertEquals("funName", parserResult.name)
-        assertEquals(Type.TypePrimitive.INT, parserResult.returnType!!.type)
+        assertEquals(Type.TypePrimitive.INT, parserResult.returnType.type)
         assertEquals(2, parserResult.parameters.size)
         assertEquals("paramName1", parserResult.parameters[0].name)
         assertEquals(Type.TypePrimitive.STRING, parserResult.parameters[0].type.type)
@@ -610,7 +616,7 @@ class ParserTest {
                 CodePosition(0, 0, 0)
             ),
         )
-        val parser = ParserImpl(TestLexerMock(tokens.toMutableList()), testHandler)
+        val parser = ParserImpl(TestLexerMock(tokens.toMutableList(), testHandler), testHandler)
         val parserResult = parser.tryParseVariableDeclaration()
         assertEquals("varName", parserResult!!.name)
         assertEquals(Type.TypePrimitive.BOOL, parserResult.type!!.type)
@@ -634,7 +640,7 @@ class ParserTest {
                 CodePosition(0, 0, 0)
             ),
         )
-        val parser = ParserImpl(TestLexerMock(tokens.toMutableList()), testHandler)
+        val parser = ParserImpl(TestLexerMock(tokens.toMutableList(), testHandler), testHandler)
         val parserResult = parser.tryParseVariableDeclaration()
         assertEquals("varName", parserResult!!.name)
         assertEquals(Type.TypePrimitive.BOOL, parserResult.type!!.type)
@@ -671,15 +677,21 @@ class ParserTest {
             ),
         )
 
-        val parser = ParserImpl(TestLexerMock(tokens), testHandler)
+        val parser = ParserImpl(TestLexerMock(tokens, testHandler), testHandler)
         val parserResult = parser.tryParseExpressionStatement()!!
         assert(parserResult.expression is Expression.SimpleExpression.FunctionCall)
 
         with(parserResult.expression as Expression.SimpleExpression.FunctionCall) {
-            assertEquals("funName", functionName)
-            assertEquals(2, functionArgs.size)
-            assertEquals("paramName1", (functionArgs[0] as Expression.SimpleExpression.Identifier).identifier)
-            assertEquals("paramName2", (functionArgs[1] as Expression.SimpleExpression.Identifier).identifier)
+            assertEquals("funName", identifier)
+            assertEquals(2, args?.size)
+            assertEquals(
+                "paramName1",
+                (args?.get(0) as Expression.SimpleExpression.Identifier).identifier
+            )
+            assertEquals(
+                "paramName2",
+                (args?.get(1) as Expression.SimpleExpression.Identifier).identifier
+            )
         }
     }
 
@@ -692,10 +704,13 @@ class ParserTest {
             ),
         )
 
-        val parser = ParserImpl(TestLexerMock(tokens), testHandler)
+        val parser = ParserImpl(TestLexerMock(tokens, testHandler), testHandler)
         val parserResult = parser.tryParseExpressionStatement()!!
         assert(parserResult.expression is Expression.SimpleExpression.Identifier)
-        assertEquals("varName", (parserResult.expression as Expression.SimpleExpression.Identifier).identifier)
+        assertEquals(
+            "varName",
+            (parserResult.expression as Expression.SimpleExpression.Identifier).identifier
+        )
     }
 
     @Test
@@ -708,7 +723,7 @@ class ParserTest {
             ),
         )
 
-        val parser = ParserImpl(TestLexerMock(tokens), testHandler)
+        val parser = ParserImpl(TestLexerMock(tokens, testHandler), testHandler)
         val parserResult = parser.tryParseExpressionStatement()!!
         assert(parserResult.expression is Expression.SimpleExpression.Literal)
 
@@ -729,25 +744,34 @@ class ParserTest {
             ),
         )
 
-        val parser = ParserImpl(TestLexerMock(tokens), testHandler)
+        val parser = ParserImpl(TestLexerMock(tokens, testHandler), testHandler)
         val parserResult = parser.tryParseExpressionStatement()!!
-        assertEquals(Operator.Minus, (parserResult.expression as Expression.UnaryExpression).operator)
-        assertEquals(1, ((parserResult.expression as Expression.UnaryExpression).right as Expression.SimpleExpression.Literal).value)
+        assertEquals(UnaryOperator.Minus, (parserResult.expression as Expression.UnaryExpression).operator)
+        assertEquals(
+            1,
+            ((parserResult.expression as Expression.UnaryExpression).right as Expression.SimpleExpression.Literal).value
+        )
     }
 
     private val testHandler = object : ErrorHandler {
-        override fun handleParserError(exception: Exception) {
-            errors++
+        override var errorCount: Int = 0
+
+        override val errorHandlerConfig: ErrorHandlerConfig = ErrorHandlerConfig()
+
+        override fun handleParserError(exception: ParserException) {
+            errorCount++
         }
 
-        override fun handleLexerError(exception: Exception) {
+        override fun handleLexerError(exception: LexerException) {
 
+        }
+
+        override fun handleInterpreterError(exception: InterpreterException) {
         }
     }
 
 
-    class TestLexerMock(private val tokens: MutableList<Token?>) : Lexer() {
-
+    class TestLexerMock(private val tokens: MutableList<Token?>, override val errorHandler: ErrorHandler) : Lexer() {
         init {
             tokens.add(0, null)
         }
@@ -765,5 +789,4 @@ class ParserTest {
             return CodePosition(0, 0, 0)
         }
     }
-
 }
